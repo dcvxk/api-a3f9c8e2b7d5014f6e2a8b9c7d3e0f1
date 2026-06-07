@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot de Telegram - Gestión de Productos Yuan</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1b5e20 0%, #0d3b0f 100%);
+            font-family: 'Courier New', 'Monaco', monospace;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .bot-status {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 2px solid #00ff41;
+            box-shadow: 0 0 20px rgba(0,255,65,0.2);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .status-led {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #ff4444;
+            box-shadow: 0 0 10px #ff4444;
+            animation: pulse 1s infinite;
+        }
+
+        .status-led.active {
+            background-color: #00ff41;
+            box-shadow: 0 0 10px #00ff41;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .bot-info {
+            flex: 1;
+        }
+
+        .bot-name {
+            font-size: 1.5em;
+            color: #00ff41;
+            font-weight: bold;
+        }
+
+        .bot-stats {
+            color: #888;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: #1a1a1a;
+            border: 1px solid #00ff41;
+            color: #00ff41;
+            padding: 10px 20px;
+            font-family: monospace;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: #00ff41;
+            color: #0a0a0a;
+        }
+
+        .btn-danger {
+            border-color: #ff4444;
+            color: #ff4444;
+        }
+
+        .btn-danger:hover {
+            background: #ff4444;
+            color: #0a0a0a;
+        }
+
+        .logs-container {
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 1px solid #2e7d32;
+            overflow: hidden;
+        }
+
+        .logs-header {
+            background: #1b5e20;
+            padding: 12px 20px;
+            color: #00ff41;
+            font-weight: bold;
+            border-bottom: 1px solid #2e7d32;
+        }
+
+        .logs-content {
+            height: 500px;
+            overflow-y: auto;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 6px;
+            padding: 4px 8px;
+            border-left: 3px solid #00ff41;
+            animation: slideIn 0.2s ease;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .log-entry.error { border-left-color: #ff4444; color: #ff8888; }
+        .log-entry.success { border-left-color: #00ff88; color: #00ff88; }
+        .log-entry.warning { border-left-color: #ffaa00; color: #ffaa44; }
+        .log-entry.bot { border-left-color: #0088ff; color: #66aaff; }
+
+        .timestamp {
+            color: #666;
+            margin-right: 12px;
+        }
+
+        .command-panel {
+            margin-top: 20px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid #2e7d32;
+        }
+
+        .command-input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .command-input {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #2e7d32;
+            color: #00ff41;
+            padding: 12px 15px;
+            font-family: monospace;
+            font-size: 14px;
+            border-radius: 6px;
+        }
+
+        .command-input:focus {
+            outline: none;
+            border-color: #00ff41;
+        }
+
+        .logs-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .logs-content::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .logs-content::-webkit-scrollbar-thumb {
+            background: #00ff41;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="bot-status">
+            <div class="status-indicator">
+                <div class="status-led" id="statusLed"></div>
+                <div class="bot-info">
+                    <div class="bot-name">🤖 YuanBot - Sistema de Gestión de Productos</div>
+                    <div class="bot-stats" id="botStats">
+                        Estado: Inicializando...
+                    </div>
+                </div>
+                <div class="control-buttons">
+                    <button class="btn" onclick="startBot()">▶ INICIAR BOT</button>
+                    <button class="btn btn-danger" onclick="stopBot()">⏹ DETENER BOT</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="logs-container">
+            <div class="logs-header">
+                📋 CONSOLA DEL BOT
+            </div>
+            <div class="logs-content" id="logsContent">
+                <div class="log-entry info">
+                    <span class="timestamp"></span> [SISTEMA] Página cargada. Esperando iniciar bot...
+                </div>
+            </div>
+        </div>
+
+        <div class="command-panel">
+            <div class="command-input-group">
+                <input type="text" id="commandInput" class="command-input" placeholder="Escribe un comando para probar (opcional)">
+                <button class="btn" onclick="sendCommand()">ENVIAR</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONFIGURACIÓN DEL BOT =====
+        const BOT_TOKEN = "8762418416:AAH02l_pssUwIM1uzyD2VmdK6NZ3tvPo398";
+        const GITHUB_TOKEN = "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";
+        const REPO_OWNER = "dcvxk";
+        const REPO_NAME = "Yuan24-7.github.io";
+        const FILE_PATH = "productos.json";
+
+        const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
+        const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${FILE_PATH}`;
+        const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+
+        let botActive = false;
+        let pollingInterval = null;
+        let lastUpdateId = 0;
+        let productosCache = null;
+        let cacheTimestamp = 0;
+        let userSessions = {};
+
+        function addLog(message, type = 'info') {
+            const logsDiv = document.getElementById('logsContent');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            
+            logsDiv.appendChild(logEntry);
+            logEntry.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            while (logsDiv.children.length > 500) {
+                logsDiv.removeChild(logsDiv.firstChild);
+            }
+        }
+
+        function updateBotStatus(status, details = '') {
+            const led = document.getElementById('statusLed');
+            const stats = document.getElementById('botStats');
+            
+            if (status === 'active') {
+                led.classList.add('active');
+                stats.innerHTML = `✅ Bot activo | Último ping: ${new Date().toLocaleTimeString()} | ${details}`;
+            } else {
+                led.classList.remove('active');
+                stats.innerHTML = `⭕ Bot detenido | ${details}`;
+            }
+        }
+
+        // ===== FUNCIONES DE GITHUB =====
+        async function obtenerProductos(forceRefresh = false) {
+            const now = Date.now() / 1000;
+            
+            if (!forceRefresh && productosCache && (now - cacheTimestamp) < 60) {
+                addLog(`📦 Usando cache (${productosCache.length} productos)`, 'info');
+                return productosCache;
+            }
+            
+            try {
+                addLog(`🌐 Descargando productos desde GitHub...`, 'info');
+                const response = await fetch(RAW_URL);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                if (data && data.products) {
+                    productosCache = data.products;
+                    cacheTimestamp = now;
+                    addLog(`✅ ${productosCache.length} productos cargados`, 'success');
+                    return productosCache;
+                }
+                return [];
+            } catch (error) {
+                addLog(`❌ Error al cargar productos: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function actualizarGitHub(productos) {
+            try {
+                const headers = {
+                    'Authorization': `token ${GITHUB_TOKEN}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                };
+                
+                const getResponse = await fetch(GITHUB_API_URL, { headers });
+                if (!getResponse.ok) return false;
+                
+                const fileInfo = await getResponse.json();
+                const dataToUpload = { products: productos };
+                const contenidoJson = JSON.stringify(dataToUpload, null, 2);
+                const contenidoBase64 = btoa(unescape(encodeURIComponent(contenidoJson)));
+                
+                const putResponse = await fetch(GITHUB_API_URL, {
+                    method: 'PUT',
+                    headers: headers,
+                    body: JSON.stringify({
+                        message: `Actualizado por bot - ${new Date().toLocaleString()}`,
+                        content: contenidoBase64,
+                        sha: fileInfo.sha,
+                        branch: "main"
+                    })
+                });
+                
+                if (putResponse.ok) {
+                    cacheTimestamp = 0;
+                    addLog(`✅ Cambios guardados en GitHub`, 'success');
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                addLog(`❌ Error al guardar: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // ===== FUNCIONES DEL BOT =====
+        async function sendMessage(chatId, text, replyMarkup = null) {
+            const payload = {
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'HTML'
+            };
+            
+            if (replyMarkup) {
+                payload.reply_markup = JSON.stringify(replyMarkup);
+            }
+            
+            try {
+                await fetch(`${API_URL}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (error) {
+                addLog(`Error enviando mensaje: ${error.message}`, 'error');
+            }
+        }
+
+        async function sendMainMenu(chatId) {
+            const keyboard = {
+                inline_keyboard: [
+                    [{ text: "📋 VER PRODUCTOS", callback_data: "list_products" }],
+                    [{ text: "✏️ MODIFICAR PRODUCTO", callback_data: "modify_product_start" }],
+                    [{ text: "📊 ESTADISTICAS", callback_data: "stats" }],
+                    [{ text: "🔄 REFRESCAR DATOS", callback_data: "refresh" }],
+                    [{ text: "❓ AYUDA", callback_data: "help" }]
+                ]
+            };
+            
+            const productos = await obtenerProductos();
+            const total = productos ? productos.length : 0;
+            
+            const message = `🤖 <b>SISTEMA DE GESTION DE PRODUCTOS YUAN</b>\n\n` +
+                           `📦 Productos: ${total}\n` +
+                           `⏰ Actualizado: ${new Date().toLocaleTimeString()}\n\n` +
+                           `Seleccione una opción:`;
+            
+            await sendMessage(chatId, message, keyboard);
+        }
+
+        async function listProducts(chatId, page = 0) {
+            const productos = await obtenerProductos();
+            if (!productos || productos.length === 0) {
+                await sendMessage(chatId, "❌ No hay productos disponibles");
+                return;
+            }
+            
+            const itemsPerPage = 5;
+            const totalPages = Math.ceil(productos.length / itemsPerPage);
+            const startIdx = page * itemsPerPage;
+            const endIdx = Math.min(startIdx + itemsPerPage, productos.length);
+            
+            let message = `📋 <b>CATALOGO DE PRODUCTOS</b>\n`;
+            message += `━━━━━━━━━━━━━━━━━━━━━\n`;
+            message += `Página ${page + 1} de ${totalPages}\n`;
+            message += `Total: ${productos.length} productos\n`;
+            message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+            
+            for (let i = startIdx; i < endIdx; i++) {
+                const p = productos[i];
+                message += `<b>${i+1}. ${p.name || 'N/A'}</b>\n`;
+                message += `🆔 ID: ${p.ID || 'N/A'}\n`;
+                message += `💰 Precio: ${p.price || 'N/A'}\n`;
+                message += `🏷️ Marca: ${p.brand || 'N/A'}\n`;
+                message += `🚚 Envío: ${p.shipping || 'N/A'}\n`;
+                message += `📝 Desc: ${(p.description || 'N/A').substring(0, 50)}...\n\n`;
+            }
+            
+            const keyboard = { inline_keyboard: [] };
+            
+            const navButtons = [];
+            if (page > 0) navButtons.push({ text: "◀️ ANTERIOR", callback_data: `page_${page-1}` });
+            if (page < totalPages - 1) navButtons.push({ text: "SIGUIENTE ▶️", callback_data: `page_${page+1}` });
+            if (navButtons.length > 0) keyboard.inline_keyboard.push(navButtons);
+            
+            keyboard.inline_keyboard.push([{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]);
+            
+            await sendMessage(chatId, message, keyboard);
+        }
+
+        async function showStats(chatId) {
+            const productos = await obtenerProductos();
+            if (!productos || productos.length === 0) {
+                await sendMessage(chatId, "❌ No hay datos disponibles");
+                return;
+            }
+            
+            const marcas = {};
+            const precios = [];
+            const envios = [];
+            
+            for (const p of productos) {
+                const marca = p.brand || 'Sin marca';
+                marcas[marca] = (marcas[marca] || 0) + 1;
+                
+                const precio = parseFloat((p.price || '$0').replace('$', ''));
+                if (!isNaN(precio)) precios.push(precio);
+                
+                const envio = parseFloat((p.shipping || '$0').replace('$', ''));
+                if (!isNaN(envio)) envios.push(envio);
+            }
+            
+            const marcaTop = Object.keys(marcas).reduce((a, b) => marcas[a] > marcas[b] ? a : b, 'N/A');
+            const precioMin = precios.length ? Math.min(...precios) : 0;
+            const precioMax = precios.length ? Math.max(...precios) : 0;
+            const precioProm = precios.length ? precios.reduce((a,b) => a+b, 0) / precios.length : 0;
+            const envioProm = envios.length ? envios.reduce((a,b) => a+b, 0) / envios.length : 0;
+            
+            const message = `📊 <b>ESTADISTICAS DEL SISTEMA</b>\n\n` +
+                           `📦 PRODUCTOS\n` +
+                           `   Total: ${productos.length}\n` +
+                           `   Marcas únicas: ${Object.keys(marcas).length}\n` +
+                           `   Marca común: ${marcaTop}\n\n` +
+                           `💰 PRECIOS\n` +
+                           `   Mínimo: $${precioMin.toFixed(2)}\n` +
+                           `   Máximo: $${precioMax.toFixed(2)}\n` +
+                           `   Promedio: $${precioProm.toFixed(2)}\n\n` +
+                           `🚚 ENVÍOS\n` +
+                           `   Promedio: $${envioProm.toFixed(2)}`;
+            
+            const keyboard = {
+                inline_keyboard: [[{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]]
+            };
+            
+            await sendMessage(chatId, message, keyboard);
+        }
+
+        async function modifyProductSelection(chatId) {
+            const productos = await obtenerProductos();
+            if (!productos || productos.length === 0) {
+                await sendMessage(chatId, "❌ No hay productos disponibles");
+                return;
+            }
+            
+            const keyboard = { inline_keyboard: [] };
+            for (let i = 0; i < Math.min(productos.length, 10); i++) {
+                keyboard.inline_keyboard.push([{
+                    text: `${productos[i].ID} - ${productos[i].name.substring(0, 30)}`,
+                    callback_data: `select_${productos[i].ID}`
+                }]);
+            }
+            keyboard.inline_keyboard.push([{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]);
+            
+            await sendMessage(chatId, "✏️ <b>SELECCIONE PRODUCTO A MODIFICAR</b>", keyboard);
+        }
+
+        async function showModifyOptions(chatId, productId) {
+            const productos = await obtenerProductos();
+            const producto = productos.find(p => p.ID === productId);
+            
+            if (!producto) {
+                await sendMessage(chatId, "❌ Producto no encontrado");
+                return;
+            }
+            
+            userSessions[chatId] = { productId: productId };
+            
+            const message = `✏️ <b>MODIFICAR PRODUCTO</b>\n\n` +
+                           `📦 ${producto.name}\n` +
+                           `🆔 ID: ${producto.ID}\n\n` +
+                           `<b>VALORES ACTUALES:</b>\n` +
+                           `💰 Precio: ${producto.price}\n` +
+                           `🚚 Envío: ${producto.shipping}\n` +
+                           `📝 Descripción: ${(producto.description || 'N/A').substring(0, 80)}...\n\n` +
+                           `¿Qué desea modificar?`;
+            
+            const keyboard = {
+                inline_keyboard: [
+                    [{ text: "💰 PRECIO", callback_data: `modify_price_${productId}` }],
+                    [{ text: "🚚 COSTO DE ENVIO", callback_data: `modify_shipping_${productId}` }],
+                    [{ text: "📝 DESCRIPCION", callback_data: `modify_desc_${productId}` }],
+                    [{ text: "◀️ VOLVER", callback_data: "modify_product_start" }],
+                    [{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]
+                ]
+            };
+            
+            await sendMessage(chatId, message, keyboard);
+        }
+
+        async function handleCallback(callbackQuery) {
+            // Obtener el chatId correctamente
+            let chatId;
+            let messageId;
+            
+            if (callbackQuery.message) {
+                chatId = callbackQuery.message.chat.id;
+                messageId = callbackQuery.message.message_id;
+            } else if (callbackQuery.callback_query && callbackQuery.callback_query.message) {
+                chatId = callbackQuery.callback_query.message.chat.id;
+                messageId = callbackQuery.callback_query.message.message_id;
+            } else {
+                addLog(`Error: Estructura de callback inválida`, 'error');
+                return;
+            }
+            
+            const data = callbackQuery.data || (callbackQuery.callback_query && callbackQuery.callback_query.data);
+            
+            if (!data) {
+                addLog(`Error: No hay datos en callback`, 'error');
+                return;
+            }
+            
+            // Responder al callback
+            try {
+                await fetch(`${API_URL}/answerCallbackQuery`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ callback_query_id: callbackQuery.id || callbackQuery.callback_query?.id })
+                });
+            } catch (e) {
+                addLog(`Error al responder callback: ${e.message}`, 'error');
+            }
+            
+            addLog(`🔘 Callback recibido: ${data}`, 'bot');
+            
+            if (data === "main_menu") {
+                await sendMainMenu(chatId);
+            } else if (data === "list_products") {
+                await listProducts(chatId, 0);
+            } else if (data === "modify_product_start") {
+                await modifyProductSelection(chatId);
+            } else if (data === "stats") {
+                await showStats(chatId);
+            } else if (data === "refresh") {
+                await obtenerProductos(true);
+                await sendMessage(chatId, "✅ Datos actualizados correctamente");
+                await sendMainMenu(chatId);
+            } else if (data === "help") {
+                const helpMsg = `❓ <b>AYUDA DEL SISTEMA</b>\n\n` +
+                               `<b>COMANDOS:</b>\n` +
+                               `/start - Menu principal\n` +
+                               `/list - Ver productos\n` +
+                               `/change ID precio - Cambiar precio\n` +
+                               `/shipping ID costo - Cambiar envío\n` +
+                               `/description ID texto - Cambiar descripción\n` +
+                               `/stats - Estadísticas\n\n` +
+                               `<b>EJEMPLOS:</b>\n` +
+                               `/change TY423 45.99\n` +
+                               `/shipping EE632 5.99`;
+                await sendMessage(chatId, helpMsg);
+            } else if (data.startsWith("page_")) {
+                const page = parseInt(data.split("_")[1]);
+                await listProducts(chatId, page);
+            } else if (data.startsWith("select_")) {
+                const productId = data.replace("select_", "");
+                await showModifyOptions(chatId, productId);
+            } else if (data.startsWith("modify_price_")) {
+                const productId = data.replace("modify_price_", "");
+                userSessions[chatId] = { action: 'waiting_price', productId: productId };
+                await sendMessage(chatId, "💰 Ingrese el nuevo precio (ej: 45.99 o $49.99):\n\nPara cancelar escriba /cancel");
+            } else if (data.startsWith("modify_shipping_")) {
+                const productId = data.replace("modify_shipping_", "");
+                userSessions[chatId] = { action: 'waiting_shipping', productId: productId };
+                await sendMessage(chatId, "🚚 Ingrese el nuevo costo de envío (ej: 5.99):\n\nPara cancelar escriba /cancel");
+            } else if (data.startsWith("modify_desc_")) {
+                const productId = data.replace("modify_desc_", "");
+                userSessions[chatId] = { action: 'waiting_description', productId: productId };
+                await sendMessage(chatId, "📝 Ingrese la nueva descripción:\n\nPara cancelar escriba /cancel");
+            }
+        }
+
+        async function handleMessage(message) {
+            const chatId = message.chat.id;
+            const text = message.text;
+            
+            if (!text) return;
+            
+            addLog(`📨 Mensaje de ${message.from.first_name}: ${text}`, 'bot');
+            
+            if (text === '/start') {
+                await sendMainMenu(chatId);
+            } else if (text === '/list') {
+                await listProducts(chatId, 0);
+            } else if (text === '/stats') {
+                await showStats(chatId);
+            } else if (text === '/cancel') {
+                delete userSessions[chatId];
+                await sendMessage(chatId, "❌ Operación cancelada");
+                await sendMainMenu(chatId);
+            } else if (text.startsWith('/change')) {
+                const parts = text.split(' ');
+                if (parts.length !== 3) {
+                    await sendMessage(chatId, "❌ Uso: /change ID precio\nEjemplo: /change TY423 45.99");
+                    return;
+                }
+                await processPriceChange(chatId, parts[1], parts[2]);
+            } else if (text.startsWith('/shipping')) {
+                const parts = text.split(' ');
+                if (parts.length !== 3) {
+                    await sendMessage(chatId, "❌ Uso: /shipping ID costo\nEjemplo: /shipping TY423 5.99");
+                    return;
+                }
+                await processShippingChange(chatId, parts[1], parts[2]);
+            } else if (text.startsWith('/description')) {
+                const parts = text.split(' ');
+                if (parts.length < 3) {
+                    await sendMessage(chatId, "❌ Uso: /description ID texto\nEjemplo: /description TY423 Nueva descripción");
+                    return;
+                }
+                const description = parts.slice(2).join(' ');
+                await processDescriptionChange(chatId, parts[1], description);
+            }
+            else if (userSessions[chatId] && userSessions[chatId].action) {
+                const session = userSessions[chatId];
+                
+                if (session.action === 'waiting_price') {
+                    await processPriceChange(chatId, session.productId, text);
+                    delete userSessions[chatId];
+                } else if (session.action === 'waiting_shipping') {
+                    await processShippingChange(chatId, session.productId, text);
+                    delete userSessions[chatId];
+                } else if (session.action === 'waiting_description') {
+                    await processDescriptionChange(chatId, session.productId, text);
+                    delete userSessions[chatId];
+                }
+            }
+        }
+
+        async function processPriceChange(chatId, productId, newPrice) {
+            let priceStr = newPrice.replace('$', '');
+            const priceNum = parseFloat(priceStr);
+            
+            if (isNaN(priceNum) || priceNum < 0) {
+                await sendMessage(chatId, "❌ Precio inválido. Use números (ej: 45.99)");
+                return;
+            }
+            
+            const formattedPrice = priceStr.includes('.') ? `$${priceNum.toFixed(2)}` : `$${priceNum.toFixed(0)}`;
+            
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                return;
+            }
+            
+            const oldPrice = productos[index].price;
+            productos[index].price = formattedPrice;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\n` +
+                                        `Producto: ${productos[index].name}\n` +
+                                        `Antes: ${oldPrice}\n` +
+                                        `Ahora: ${formattedPrice}`);
+            } else {
+                await sendMessage(chatId, "❌ Error al guardar en GitHub");
+            }
+        }
+
+        async function processShippingChange(chatId, productId, newShipping) {
+            let shippingStr = newShipping.replace('$', '');
+            const shippingNum = parseFloat(shippingStr);
+            
+            if (isNaN(shippingNum) || shippingNum < 0) {
+                await sendMessage(chatId, "❌ Costo inválido. Use números (ej: 5.99)");
+                return;
+            }
+            
+            const formattedShipping = shippingStr.includes('.') ? `$${shippingNum.toFixed(2)}` : `$${shippingNum.toFixed(0)}`;
+            
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                return;
+            }
+            
+            const oldShipping = productos[index].shipping;
+            productos[index].shipping = formattedShipping;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\n` +
+                                        `Producto: ${productos[index].name}\n` +
+                                        `Antes: ${oldShipping}\n` +
+                                        `Ahora: ${formattedShipping}`);
+            } else {
+                await sendMessage(chatId, "❌ Error al guardar en GitHub");
+            }
+        }
+
+        async function processDescriptionChange(chatId, productId, newDescription) {
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                return;
+            }
+            
+            const oldDescription = productos[index].description;
+            productos[index].description = newDescription;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ DESCRIPCION ACTUALIZADA\n\n` +
+                                        `Producto: ${productos[index].name}\n` +
+                                        `Antes: ${oldDescription?.substring(0, 50)}...\n` +
+                                        `Ahora: ${newDescription.substring(0, 50)}...`);
+            } else {
+                await sendMessage(chatId, "❌ Error al guardar en GitHub");
+            }
+        }
+
+        // ===== POLLING DEL BOT =====
+        async function pollTelegram() {
+            if (!botActive) return;
+            
+            try {
+                const url = `${API_URL}/getUpdates?timeout=30&offset=${lastUpdateId + 1}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.ok && data.result) {
+                    for (const update of data.result) {
+                        if (update.update_id > lastUpdateId) {
+                            lastUpdateId = update.update_id;
+                            
+                            if (update.message) {
+                                await handleMessage(update.message);
+                            }
+                            
+                            if (update.callback_query) {
+                                await handleCallback(update.callback_query);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                addLog(`Error en polling: ${error.message}`, 'error');
+            }
+        }
+
+        function startBot() {
+            if (botActive) {
+                addLog("⚠️ El bot ya está activo", 'warning');
+                return;
+            }
+            
+            botActive = true;
+            
+            if (pollingInterval) clearInterval(pollingInterval);
+            pollingInterval = setInterval(pollTelegram, 1000);
+            
+            updateBotStatus('active', 'Escuchando comandos...');
+            addLog("🤖 BOT INICIADO - Esperando mensajes en Telegram", 'success');
+            addLog(`📱 Busca tu bot en Telegram (ID: ${BOT_TOKEN.split(':')[0]}) para comenzar`, 'info');
+        }
+
+        function stopBot() {
+            if (!botActive) {
+                addLog("⚠️ El bot ya está detenido", 'warning');
+                return;
+            }
+            
+            botActive = false;
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            
+            updateBotStatus('stopped', 'Bot detenido manualmente');
+            addLog("⏹️ BOT DETENIDO - Ya no responde a comandos", 'warning');
+        }
+
+        function sendCommand() {
+            const input = document.getElementById('commandInput');
+            const command = input.value.trim();
+            
+            if (!command) return;
+            
+            addLog(`⌨️ Comando manual (solo para prueba): ${command}`, 'info');
+            input.value = '';
+        }
+
+        window.addEventListener('load', () => {
+            addLog("🌿 Sistema de Gestión de Productos Yuan", 'success');
+            addLog("⚠️ IMPORTANTE: Presiona 'INICIAR BOT' para activar el bot", 'warning');
+            setTimeout(() => startBot(), 1000);
+        });
+    </script>
+</body>
+</html>
