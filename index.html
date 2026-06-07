@@ -250,6 +250,9 @@
         const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
         const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${FILE_PATH}`;
         const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+        
+        // Proxy CORS para evitar bloqueos
+        const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
 
         let botActive = false;
         let pollingInterval = null;
@@ -298,7 +301,16 @@
             
             try {
                 addLog(`🌐 Descargando productos desde GitHub...`, 'info');
-                const response = await fetch(RAW_URL);
+                
+                // Intentar sin proxy primero
+                let response = await fetch(RAW_URL);
+                
+                if (!response.ok) {
+                    // Si falla, intentar con proxy
+                    addLog(`🔄 Intentando con proxy CORS...`, 'warning');
+                    response = await fetch(CORS_PROXY + RAW_URL);
+                }
+                
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 const data = await response.json();
@@ -317,43 +329,78 @@
 
         async function actualizarGitHub(productos) {
             try {
+                addLog(`📤 Intentando guardar en GitHub...`, 'info');
+                
+                // Obtener el SHA actual del archivo
                 const headers = {
                     'Authorization': `token ${GITHUB_TOKEN}`,
                     'Accept': 'application/vnd.github.v3+json'
                 };
                 
-                const getResponse = await fetch(GITHUB_API_URL, { headers });
-                if (!getResponse.ok) return false;
+                // Intentar obtener la información del archivo
+                let getResponse = await fetch(GITHUB_API_URL, { headers });
                 
-                const fileInfo = await getResponse.json();
+                if (!getResponse.ok) {
+                    addLog(`❌ Error al obtener información del archivo: ${getResponse.status}`, 'error');
+                    
+                    // Si es error 404, el archivo no existe, lo crearemos
+                    if (getResponse.status === 404) {
+                        addLog(`📝 Archivo no existe, se creará uno nuevo`, 'warning');
+                    } else {
+                        return false;
+                    }
+                }
+                
+                let sha = null;
+                if (getResponse.ok) {
+                    const fileInfo = await getResponse.json();
+                    sha = fileInfo.sha;
+                }
+                
+                // Preparar el contenido
                 const dataToUpload = { products: productos };
                 const contenidoJson = JSON.stringify(dataToUpload, null, 2);
                 const contenidoBase64 = btoa(unescape(encodeURIComponent(contenidoJson)));
                 
-                const putResponse = await fetch(GITHUB_API_URL, {
+                const putData = {
+                    message: `Actualizado por bot - ${new Date().toLocaleString()}`,
+                    content: contenidoBase64,
+                    branch: "main"
+                };
+                
+                if (sha) {
+                    putData.sha = sha;
+                }
+                
+                // Intentar subir directamente
+                let putResponse = await fetch(GITHUB_API_URL, {
                     method: 'PUT',
                     headers: headers,
-                    body: JSON.stringify({
-                        message: `Actualizado por bot - ${new Date().toLocaleString()}`,
-                        content: contenidoBase64,
-                        sha: fileInfo.sha,
-                        branch: "main"
-                    })
+                    body: JSON.stringify(putData)
                 });
+                
+                if (!putResponse.ok && putResponse.status === 403) {
+                    addLog(`⚠️ Error 403: Token sin permisos o CORS bloqueado`, 'error');
+                    addLog(`💡 Solución: El token necesita permisos 'repo' o 'public_repo'`, 'warning');
+                    return false;
+                }
                 
                 if (putResponse.ok) {
                     cacheTimestamp = 0;
-                    addLog(`✅ Cambios guardados en GitHub`, 'success');
+                    addLog(`✅ Cambios guardados exitosamente en GitHub`, 'success');
                     return true;
+                } else {
+                    const errorText = await putResponse.text();
+                    addLog(`❌ Error al guardar: ${putResponse.status} - ${errorText.substring(0, 200)}`, 'error');
+                    return false;
                 }
-                return false;
             } catch (error) {
-                addLog(`❌ Error al guardar: ${error.message}`, 'error');
+                addLog(`❌ Error de red al guardar: ${error.message}`, 'error');
                 return false;
             }
         }
 
-        // ===== FUNCIONES DEL BOT =====
+        // ===== FUNCIONES DEL BOT (igual que antes) =====
         async function sendMessage(chatId, text, replyMarkup = null) {
             const payload = {
                 chat_id: chatId,
@@ -427,12 +474,10 @@
             }
             
             const keyboard = { inline_keyboard: [] };
-            
             const navButtons = [];
             if (page > 0) navButtons.push({ text: "◀️ ANTERIOR", callback_data: `page_${page-1}` });
             if (page < totalPages - 1) navButtons.push({ text: "SIGUIENTE ▶️", callback_data: `page_${page+1}` });
             if (navButtons.length > 0) keyboard.inline_keyboard.push(navButtons);
-            
             keyboard.inline_keyboard.push([{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]);
             
             await sendMessage(chatId, message, keyboard);
@@ -537,41 +582,112 @@
             await sendMessage(chatId, message, keyboard);
         }
 
-        async function handleCallback(callbackQuery) {
-            // Obtener el chatId correctamente
-            let chatId;
-            let messageId;
+        async function processPriceChange(chatId, productId, newPrice) {
+            let priceStr = newPrice.replace('$', '');
+            const priceNum = parseFloat(priceStr);
             
-            if (callbackQuery.message) {
-                chatId = callbackQuery.message.chat.id;
-                messageId = callbackQuery.message.message_id;
-            } else if (callbackQuery.callback_query && callbackQuery.callback_query.message) {
-                chatId = callbackQuery.callback_query.message.chat.id;
-                messageId = callbackQuery.callback_query.message.message_id;
+            if (isNaN(priceNum) || priceNum < 0) {
+                await sendMessage(chatId, "❌ Precio inválido. Use números (ej: 45.99)");
+                return;
+            }
+            
+            const formattedPrice = priceStr.includes('.') ? `$${priceNum.toFixed(2)}` : `$${priceNum.toFixed(0)}`;
+            
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                return;
+            }
+            
+            const oldPrice = productos[index].price;
+            productos[index].price = formattedPrice;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\n` +
+                                        `Producto: ${productos[index].name}\n` +
+                                        `Antes: ${oldPrice}\n` +
+                                        `Ahora: ${formattedPrice}`);
             } else {
-                addLog(`Error: Estructura de callback inválida`, 'error');
+                await sendMessage(chatId, "❌ Error al guardar en GitHub. Revisa los logs para más detalles.");
+            }
+        }
+
+        async function processShippingChange(chatId, productId, newShipping) {
+            let shippingStr = newShipping.replace('$', '');
+            const shippingNum = parseFloat(shippingStr);
+            
+            if (isNaN(shippingNum) || shippingNum < 0) {
+                await sendMessage(chatId, "❌ Costo inválido. Use números (ej: 5.99)");
                 return;
             }
             
-            const data = callbackQuery.data || (callbackQuery.callback_query && callbackQuery.callback_query.data);
+            const formattedShipping = shippingStr.includes('.') ? `$${shippingNum.toFixed(2)}` : `$${shippingNum.toFixed(0)}`;
             
-            if (!data) {
-                addLog(`Error: No hay datos en callback`, 'error');
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
                 return;
             }
             
-            // Responder al callback
+            const oldShipping = productos[index].shipping;
+            productos[index].shipping = formattedShipping;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\n` +
+                                        `Producto: ${productos[index].name}\n` +
+                                        `Antes: ${oldShipping}\n` +
+                                        `Ahora: ${formattedShipping}`);
+            } else {
+                await sendMessage(chatId, "❌ Error al guardar en GitHub. Revisa los logs para más detalles.");
+            }
+        }
+
+        async function processDescriptionChange(chatId, productId, newDescription) {
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                return;
+            }
+            
+            const oldDescription = productos[index].description;
+            productos[index].description = newDescription;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ DESCRIPCION ACTUALIZADA\n\n` +
+                                        `Producto: ${productos[index].name}\n` +
+                                        `Antes: ${oldDescription?.substring(0, 50)}...\n` +
+                                        `Ahora: ${newDescription.substring(0, 50)}...`);
+            } else {
+                await sendMessage(chatId, "❌ Error al guardar en GitHub. Revisa los logs para más detalles.");
+            }
+        }
+
+        async function handleCallback(callbackQuery) {
+            let chatId = callbackQuery.message?.chat?.id;
+            if (!chatId) {
+                addLog(`Error: No se pudo obtener chatId del callback`, 'error');
+                return;
+            }
+            
+            const data = callbackQuery.data;
+            
             try {
                 await fetch(`${API_URL}/answerCallbackQuery`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ callback_query_id: callbackQuery.id || callbackQuery.callback_query?.id })
+                    body: JSON.stringify({ callback_query_id: callbackQuery.id })
                 });
             } catch (e) {
                 addLog(`Error al responder callback: ${e.message}`, 'error');
             }
             
-            addLog(`🔘 Callback recibido: ${data}`, 'bot');
+            addLog(`🔘 Callback: ${data}`, 'bot');
             
             if (data === "main_menu") {
                 await sendMainMenu(chatId);
@@ -622,10 +738,11 @@
         async function handleMessage(message) {
             const chatId = message.chat.id;
             const text = message.text;
+            const userName = message.from.first_name || message.from.username;
             
             if (!text) return;
             
-            addLog(`📨 Mensaje de ${message.from.first_name}: ${text}`, 'bot');
+            addLog(`📨 Mensaje de ${userName}: ${text}`, 'bot');
             
             if (text === '/start') {
                 await sendMainMenu(chatId);
@@ -676,92 +793,6 @@
             }
         }
 
-        async function processPriceChange(chatId, productId, newPrice) {
-            let priceStr = newPrice.replace('$', '');
-            const priceNum = parseFloat(priceStr);
-            
-            if (isNaN(priceNum) || priceNum < 0) {
-                await sendMessage(chatId, "❌ Precio inválido. Use números (ej: 45.99)");
-                return;
-            }
-            
-            const formattedPrice = priceStr.includes('.') ? `$${priceNum.toFixed(2)}` : `$${priceNum.toFixed(0)}`;
-            
-            const productos = await obtenerProductos();
-            const index = productos.findIndex(p => p.ID === productId);
-            
-            if (index === -1) {
-                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
-                return;
-            }
-            
-            const oldPrice = productos[index].price;
-            productos[index].price = formattedPrice;
-            
-            if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `Antes: ${oldPrice}\n` +
-                                        `Ahora: ${formattedPrice}`);
-            } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub");
-            }
-        }
-
-        async function processShippingChange(chatId, productId, newShipping) {
-            let shippingStr = newShipping.replace('$', '');
-            const shippingNum = parseFloat(shippingStr);
-            
-            if (isNaN(shippingNum) || shippingNum < 0) {
-                await sendMessage(chatId, "❌ Costo inválido. Use números (ej: 5.99)");
-                return;
-            }
-            
-            const formattedShipping = shippingStr.includes('.') ? `$${shippingNum.toFixed(2)}` : `$${shippingNum.toFixed(0)}`;
-            
-            const productos = await obtenerProductos();
-            const index = productos.findIndex(p => p.ID === productId);
-            
-            if (index === -1) {
-                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
-                return;
-            }
-            
-            const oldShipping = productos[index].shipping;
-            productos[index].shipping = formattedShipping;
-            
-            if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `Antes: ${oldShipping}\n` +
-                                        `Ahora: ${formattedShipping}`);
-            } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub");
-            }
-        }
-
-        async function processDescriptionChange(chatId, productId, newDescription) {
-            const productos = await obtenerProductos();
-            const index = productos.findIndex(p => p.ID === productId);
-            
-            if (index === -1) {
-                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
-                return;
-            }
-            
-            const oldDescription = productos[index].description;
-            productos[index].description = newDescription;
-            
-            if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ DESCRIPCION ACTUALIZADA\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `Antes: ${oldDescription?.substring(0, 50)}...\n` +
-                                        `Ahora: ${newDescription.substring(0, 50)}...`);
-            } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub");
-            }
-        }
-
         // ===== POLLING DEL BOT =====
         async function pollTelegram() {
             if (!botActive) return;
@@ -804,7 +835,7 @@
             
             updateBotStatus('active', 'Escuchando comandos...');
             addLog("🤖 BOT INICIADO - Esperando mensajes en Telegram", 'success');
-            addLog(`📱 Busca tu bot en Telegram (ID: ${BOT_TOKEN.split(':')[0]}) para comenzar`, 'info');
+            addLog(`📱 Busca tu bot en Telegram para comenzar`, 'info');
         }
 
         function stopBot() {
@@ -829,13 +860,16 @@
             
             if (!command) return;
             
-            addLog(`⌨️ Comando manual (solo para prueba): ${command}`, 'info');
+            addLog(`⌨️ Comando manual: ${command}`, 'info');
             input.value = '';
         }
 
         window.addEventListener('load', () => {
             addLog("🌿 Sistema de Gestión de Productos Yuan", 'success');
             addLog("⚠️ IMPORTANTE: Presiona 'INICIAR BOT' para activar el bot", 'warning');
+            addLog("💡 El bot puede tener problemas para GUARDAR en GitHub debido a CORS", 'warning');
+            addLog("💡 Para solucionarlo, abre este enlace y pide acceso temporal:", 'info');
+            addLog("🔗 https://cors-anywhere.herokuapp.com/corsdemo", 'info');
             setTimeout(() => startBot(), 1000);
         });
     </script>
