@@ -23,13 +23,92 @@
             margin: 0 auto;
         }
 
+        /* Modal para ingresar el token */
+        .modal {
+            display: flex;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #0a0a0a;
+            border: 2px solid #00ff41;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-content h2 {
+            color: #00ff41;
+            margin-bottom: 20px;
+        }
+
+        .modal-content p {
+            color: #ccc;
+            margin-bottom: 15px;
+        }
+
+        .token-input {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #00ff41;
+            color: #00ff41;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 14px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .token-input:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(0,255,65,0.3);
+        }
+
+        .btn-primary {
+            background: #00ff41;
+            color: #0a0a0a;
+            border: none;
+            padding: 12px 24px;
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            margin: 5px;
+        }
+
+        .btn-primary:hover {
+            background: #00cc33;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            font-family: monospace;
+            cursor: pointer;
+            border-radius: 8px;
+            margin: 5px;
+        }
+
         .bot-status {
             background: #0a0a0a;
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
             border: 2px solid #00ff41;
-            box-shadow: 0 0 20px rgba(0,255,65,0.2);
         }
 
         .status-indicator {
@@ -44,13 +123,11 @@
             height: 20px;
             border-radius: 50%;
             background-color: #ff4444;
-            box-shadow: 0 0 10px #ff4444;
             animation: pulse 1s infinite;
         }
 
         .status-led.active {
             background-color: #00ff41;
-            box-shadow: 0 0 10px #00ff41;
         }
 
         @keyframes pulse {
@@ -121,7 +198,7 @@
         }
 
         .logs-content {
-            height: 550px;
+            height: 500px;
             overflow-y: auto;
             padding: 15px;
             font-family: 'Courier New', monospace;
@@ -210,7 +287,7 @@
                 <div class="bot-info">
                     <div class="bot-name">🤖 YuanBot - Gestor de Productos</div>
                     <div class="bot-stats" id="botStats">
-                        Estado: Inicializando...
+                        Estado: Esperando token...
                     </div>
                 </div>
                 <div class="control-buttons">
@@ -228,9 +305,6 @@
                 <div class="log-entry info">
                     <span class="timestamp"></span> [SISTEMA] Página cargada.
                 </div>
-                <div class="log-entry info">
-                    <span class="timestamp"></span> [SISTEMA] Descifrando token binario...
-                </div>
             </div>
         </div>
 
@@ -242,43 +316,29 @@
         </div>
     </div>
 
+    <!-- Modal para ingresar el token -->
+    <div id="tokenModal" class="modal">
+        <div class="modal-content">
+            <h2>🔑 CONFIGURACIÓN REQUERIDA</h2>
+            <p>Ingresa tu GitHub Personal Access Token para que el bot pueda guardar los cambios.</p>
+            <p style="font-size: 12px; color: #ffaa44;">El token se guardará en tu navegador (localStorage)</p>
+            <input type="password" id="tokenInput" class="token-input" placeholder="Pega tu token de GitHub aquí">
+            <div>
+                <button class="btn-primary" onclick="saveToken()">✅ GUARDAR TOKEN</button>
+                <button class="btn-secondary" onclick="skipToken()">⚠️ MODO SOLO LECTURA</button>
+            </div>
+            <div id="tokenMessage" style="margin-top: 15px; font-size: 12px;"></div>
+        </div>
+    </div>
+
     <script>
-        // ===== TOKEN CIFRADO EN BINARIO CON EMOJIS ඞ =====
-        // El token original: 
-        // Convertido a binario y separado con ඞ
-        
-        const BINARIO_TOKEN = "01100111_01101000_01110000_01011111_01100011_01000001_01001000_01011010_01010100_01001101_00110111_01111000_01101100_01010100_01001000_01100111_01000001_01101110_01000100_01001101_01001010_01010111_01100100_01101111_01101001_01010001_01001111_01101111_01100011_01110100_01011010_01001101_00110100_01010111_00111000_01111001_00110100_01001100_01001110";
-        
-        // Separador ඞ
-        function descifrarTokenBinario() {
-            try {
-                // Separar por el carácter invisible (espacio entre bytes)
-                // El binario viene separado por _
-                const bytesBinarios = BINARIO_TOKEN.split('_');
-                let token = '';
-                
-                for (let i = 0; i < bytesBinarios.length; i++) {
-                    // Convertir binario a carácter
-                    const charCode = parseInt(bytesBinarios[i], 2);
-                    token += String.fromCharCode(charCode);
-                }
-                
-                if (token && token.startsWith('ghp_')) {
-                    return token;
-                }
-                return null;
-            } catch(e) {
-                console.error("Error descifrando token:", e);
-                return null;
-            }
-        }
-        
         // ===== CONFIGURACIÓN =====
         const BOT_TOKEN = "8762418416:AAH02l_pssUwIM1uzyD2VmdK6NZ3tvPo398";
         const REPO_OWNER = "dcvxk";
         const REPO_NAME = "Yuan24-7.github.io";
         const FILE_PATH = "productos.json";
         
+        // Variables
         let GITHUB_TOKEN = null;
         let botActive = false;
         let pollingInterval = null;
@@ -314,19 +374,58 @@
             }
         }
 
-        // Descifrar token desde binario
-        function setupToken() {
-            addLog('🔓 Descifrando token desde binario...', 'info');
-            GITHUB_TOKEN = descifrarTokenBinario();
+        // Guardar token en localStorage
+        function saveToken() {
+            const tokenInput = document.getElementById('tokenInput');
+            const token = tokenInput.value.trim();
             
-            if (GITHUB_TOKEN && GITHUB_TOKEN.startsWith('ghp_')) {
-                const maskedToken = GITHUB_TOKEN.substring(0, 8) + '...' + GITHUB_TOKEN.substring(GITHUB_TOKEN.length - 4);
-                addLog(`🔑 Token descifrado correctamente: ${maskedToken}`, 'success');
-                return true;
-            } else {
-                addLog(`❌ Error al descifrar token desde binario`, 'error');
-                return false;
+            if (!token) {
+                document.getElementById('tokenMessage').innerHTML = '❌ Por favor ingresa un token';
+                document.getElementById('tokenMessage').style.color = '#ff4444';
+                return;
             }
+            
+            if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+                document.getElementById('tokenMessage').innerHTML = '❌ El token parece inválido. Debe empezar con ghp_ o github_pat_';
+                document.getElementById('tokenMessage').style.color = '#ff4444';
+                return;
+            }
+            
+            // Guardar token
+            localStorage.setItem('github_token', token);
+            GITHUB_TOKEN = token;
+            
+            document.getElementById('tokenMessage').innerHTML = '✅ Token guardado correctamente';
+            document.getElementById('tokenMessage').style.color = '#00ff41';
+            
+            // Probar el token
+            setTimeout(() => {
+                document.getElementById('tokenModal').style.display = 'none';
+                addLog('🔑 Token de GitHub configurado', 'success');
+                testToken();
+                obtenerProductos();
+            }, 1000);
+        }
+
+        function skipToken() {
+            document.getElementById('tokenModal').style.display = 'none';
+            GITHUB_TOKEN = null;
+            addLog('⚠️ Modo solo lectura: Los cambios NO se guardarán en GitHub', 'warning');
+            addLog('💡 Para guardar cambios, recarga la página e ingresa un token', 'info');
+            obtenerProductos();
+        }
+
+        // Cargar token guardado
+        function loadSavedToken() {
+            const savedToken = localStorage.getItem('github_token');
+            if (savedToken && (savedToken.startsWith('ghp_') || savedToken.startsWith('github_pat_'))) {
+                GITHUB_TOKEN = savedToken;
+                document.getElementById('tokenModal').style.display = 'none';
+                addLog('🔑 Token cargado desde almacenamiento local', 'success');
+                testToken();
+                return true;
+            }
+            return false;
         }
 
         // Probar el token
@@ -345,19 +444,11 @@
                 if (response.ok) {
                     const user = await response.json();
                     addLog(`✅ Token válido - Usuario: ${user.login}`, 'success');
-                    
-                    const repoTest = await fetch(GITHUB_API_URL, {
-                        headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
-                    });
-                    if (repoTest.ok) {
-                        addLog(`✅ Acceso confirmado al repositorio ${REPO_OWNER}/${REPO_NAME}`, 'success');
-                        return true;
-                    } else {
-                        addLog(`⚠️ El token no tiene acceso al repositorio. Verifica los permisos 'repo'`, 'warning');
-                        return false;
-                    }
+                    return true;
                 } else {
                     addLog(`❌ Token inválido. El token puede haber expirado.`, 'error');
+                    GITHUB_TOKEN = null;
+                    localStorage.removeItem('github_token');
                     return false;
                 }
             } catch (error) {
@@ -401,7 +492,7 @@
 
         async function actualizarGitHub(productos) {
             if (!GITHUB_TOKEN) {
-                addLog(`❌ No hay token de GitHub disponible`, 'error');
+                addLog(`⚠️ No se puede guardar: No hay token de GitHub`, 'warning');
                 return false;
             }
             
@@ -484,18 +575,19 @@
                     [{ text: "📋 VER PRODUCTOS", callback_data: "list_products" }],
                     [{ text: "✏️ MODIFICAR PRODUCTO", callback_data: "modify_product_start" }],
                     [{ text: "📊 ESTADISTICAS", callback_data: "stats" }],
-                    [{ text: "🔄 REFRESCAR DATOS", callback_data: "refresh" }],
+                    [{ text: "🔄 REFRESCAR", callback_data: "refresh" }],
                     [{ text: "❓ AYUDA", callback_data: "help" }]
                 ]
             };
             
             const productos = await obtenerProductos();
             const total = productos ? productos.length : 0;
+            const tokenStatus = GITHUB_TOKEN ? "✅ Configurado" : "⚠️ Solo lectura";
             
             const message = `🤖 <b>GESTOR DE PRODUCTOS YUAN</b>\n\n` +
-                           `📦 Productos en catálogo: ${total}\n` +
-                           `🔐 Token: Cifrado en binario ඞ\n` +
-                           `⏰ Hora: ${new Date().toLocaleTimeString()}\n\n` +
+                           `📦 Productos: ${total}\n` +
+                           `🔑 GitHub: ${tokenStatus}\n` +
+                           `⏰ ${new Date().toLocaleTimeString()}\n\n` +
                            `Seleccione una opción:`;
             
             await sendMessage(chatId, message, keyboard);
@@ -525,8 +617,7 @@
                 message += `🆔 ID: ${p.ID || 'N/A'}\n`;
                 message += `💰 Precio: ${p.price || 'N/A'}\n`;
                 message += `🏷️ Marca: ${p.brand || 'N/A'}\n`;
-                message += `🚚 Envío: ${p.shipping || 'N/A'}\n`;
-                message += `📝 Descripción: ${(p.description || 'N/A').substring(0, 50)}...\n\n`;
+                message += `🚚 Envío: ${p.shipping || 'N/A'}\n\n`;
             }
             
             const keyboard = { inline_keyboard: [] };
@@ -548,34 +639,27 @@
             
             const marcas = {};
             const precios = [];
-            const envios = [];
             
             for (const p of productos) {
                 const marca = p.brand || 'Sin marca';
                 marcas[marca] = (marcas[marca] || 0) + 1;
                 const precio = parseFloat((p.price || '$0').replace('$', ''));
                 if (!isNaN(precio)) precios.push(precio);
-                const envio = parseFloat((p.shipping || '$0').replace('$', ''));
-                if (!isNaN(envio)) envios.push(envio);
             }
             
             const marcaTop = Object.keys(marcas).reduce((a, b) => marcas[a] > marcas[b] ? a : b, 'N/A');
             const precioMin = precios.length ? Math.min(...precios) : 0;
             const precioMax = precios.length ? Math.max(...precios) : 0;
             const precioProm = precios.length ? precios.reduce((a,b) => a+b, 0) / precios.length : 0;
-            const envioProm = envios.length ? envios.reduce((a,b) => a+b, 0) / envios.length : 0;
             
-            const message = `📊 <b>ESTADISTICAS DEL SISTEMA</b>\n\n` +
-                           `📦 PRODUCTOS\n` +
-                           `   Total: ${productos.length}\n` +
-                           `   Marcas únicas: ${Object.keys(marcas).length}\n` +
-                           `   Marca más común: ${marcaTop}\n\n` +
-                           `💰 PRECIOS\n` +
-                           `   Mínimo: $${precioMin.toFixed(2)}\n` +
-                           `   Máximo: $${precioMax.toFixed(2)}\n` +
-                           `   Promedio: $${precioProm.toFixed(2)}\n\n` +
-                           `🚚 ENVÍOS\n` +
-                           `   Promedio: $${envioProm.toFixed(2)}`;
+            const message = `📊 <b>ESTADISTICAS</b>\n\n` +
+                           `📦 Total: ${productos.length}\n` +
+                           `🏷️ Marcas: ${Object.keys(marcas).length}\n` +
+                           `⭐ Marca común: ${marcaTop}\n\n` +
+                           `💰 Precios\n` +
+                           `   Mín: $${precioMin.toFixed(2)}\n` +
+                           `   Máx: $${precioMax.toFixed(2)}\n` +
+                           `   Prom: $${precioProm.toFixed(2)}`;
             
             const keyboard = { inline_keyboard: [[{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]] };
             await sendMessage(chatId, message, keyboard);
@@ -584,7 +668,7 @@
         async function modifyProductSelection(chatId) {
             const productos = await obtenerProductos();
             if (!productos || productos.length === 0) {
-                await sendMessage(chatId, "❌ No hay productos disponibles");
+                await sendMessage(chatId, "❌ No hay productos");
                 return;
             }
             
@@ -597,7 +681,7 @@
             }
             keyboard.inline_keyboard.push([{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]);
             
-            await sendMessage(chatId, "✏️ <b>SELECCIONE PRODUCTO A MODIFICAR</b>", keyboard);
+            await sendMessage(chatId, "✏️ <b>SELECCIONE PRODUCTO</b>", keyboard);
         }
 
         async function showModifyOptions(chatId, productId) {
@@ -611,19 +695,17 @@
             
             userSessions[chatId] = { productId: productId };
             
-            const message = `✏️ <b>MODIFICAR PRODUCTO: ${producto.name}</b>\n\n` +
-                           `💰 Precio actual: ${producto.price}\n` +
-                           `🚚 Envío actual: ${producto.shipping}\n` +
-                           `📝 Descripción: ${(producto.description || 'N/A').substring(0, 60)}...\n\n` +
-                           `¿Qué desea modificar?`;
+            const message = `✏️ <b>MODIFICAR: ${producto.name}</b>\n\n` +
+                           `💰 Precio: ${producto.price}\n` +
+                           `🚚 Envío: ${producto.shipping}\n\n` +
+                           `¿Qué modificar?`;
             
             const keyboard = {
                 inline_keyboard: [
                     [{ text: "💰 PRECIO", callback_data: `modify_price_${productId}` }],
-                    [{ text: "🚚 COSTO DE ENVIO", callback_data: `modify_shipping_${productId}` }],
-                    [{ text: "📝 DESCRIPCION", callback_data: `modify_desc_${productId}` }],
+                    [{ text: "🚚 ENVIO", callback_data: `modify_shipping_${productId}` }],
                     [{ text: "◀️ VOLVER", callback_data: "modify_product_start" }],
-                    [{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]
+                    [{ text: "🏠 MENU", callback_data: "main_menu" }]
                 ]
             };
             
@@ -635,7 +717,7 @@
             const priceNum = parseFloat(priceStr);
             
             if (isNaN(priceNum) || priceNum < 0) {
-                await sendMessage(chatId, "❌ Precio inválido. Use números (ej: 45.99)");
+                await sendMessage(chatId, "❌ Precio inválido");
                 return;
             }
             
@@ -644,7 +726,7 @@
             const index = productos.findIndex(p => p.ID === productId);
             
             if (index === -1) {
-                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                await sendMessage(chatId, "❌ Producto no encontrado");
                 return;
             }
             
@@ -652,13 +734,9 @@
             productos[index].price = formattedPrice;
             
             if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `ID: ${productId}\n` +
-                                        `Antes: ${oldPrice}\n` +
-                                        `Ahora: ${formattedPrice}`);
+                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\nProducto: ${productos[index].name}\nAntes: ${oldPrice}\nAhora: ${formattedPrice}`);
             } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub.");
+                await sendMessage(chatId, "❌ Error al guardar. ¿Configuraste el token de GitHub?");
             }
         }
 
@@ -667,7 +745,7 @@
             const shippingNum = parseFloat(shippingStr);
             
             if (isNaN(shippingNum) || shippingNum < 0) {
-                await sendMessage(chatId, "❌ Costo inválido. Use números (ej: 5.99)");
+                await sendMessage(chatId, "❌ Costo inválido");
                 return;
             }
             
@@ -676,7 +754,7 @@
             const index = productos.findIndex(p => p.ID === productId);
             
             if (index === -1) {
-                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
+                await sendMessage(chatId, "❌ Producto no encontrado");
                 return;
             }
             
@@ -684,36 +762,9 @@
             productos[index].shipping = formattedShipping;
             
             if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `ID: ${productId}\n` +
-                                        `Antes: ${oldShipping}\n` +
-                                        `Ahora: ${formattedShipping}`);
+                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\nProducto: ${productos[index].name}\nAntes: ${oldShipping}\nAhora: ${formattedShipping}`);
             } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub.");
-            }
-        }
-
-        async function processDescriptionChange(chatId, productId, newDescription) {
-            const productos = await obtenerProductos();
-            const index = productos.findIndex(p => p.ID === productId);
-            
-            if (index === -1) {
-                await sendMessage(chatId, `❌ Producto con ID ${productId} no encontrado`);
-                return;
-            }
-            
-            const oldDescription = productos[index].description;
-            productos[index].description = newDescription;
-            
-            if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ DESCRIPCION ACTUALIZADA\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `ID: ${productId}\n` +
-                                        `Antes: ${(oldDescription || 'N/A').substring(0, 50)}...\n` +
-                                        `Ahora: ${newDescription.substring(0, 50)}...`);
-            } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub.");
+                await sendMessage(chatId, "❌ Error al guardar. ¿Configuraste el token de GitHub?");
             }
         }
 
@@ -733,105 +784,74 @@
             
             addLog(`🔘 Callback: ${data}`, 'bot');
             
-            if (data === "main_menu") {
-                await sendMainMenu(chatId);
-            } else if (data === "list_products") {
-                await listProducts(chatId, 0);
-            } else if (data === "modify_product_start") {
-                await modifyProductSelection(chatId);
-            } else if (data === "stats") {
-                await showStats(chatId);
-            } else if (data === "refresh") {
+            if (data === "main_menu") await sendMainMenu(chatId);
+            else if (data === "list_products") await listProducts(chatId, 0);
+            else if (data === "modify_product_start") await modifyProductSelection(chatId);
+            else if (data === "stats") await showStats(chatId);
+            else if (data === "refresh") {
                 await obtenerProductos(true);
-                await sendMessage(chatId, "✅ Datos actualizados correctamente");
+                await sendMessage(chatId, "✅ Datos actualizados");
                 await sendMainMenu(chatId);
-            } else if (data === "help") {
-                const helpMsg = `❓ <b>AYUDA DEL SISTEMA</b>\n\n` +
-                               `<b>COMANDOS:</b>\n` +
-                               `/start - Menu principal\n` +
-                               `/list - Ver productos\n` +
-                               `/change ID precio - Cambiar precio\n` +
-                               `/shipping ID costo - Cambiar envío\n` +
-                               `/description ID texto - Cambiar descripción\n` +
-                               `/stats - Estadísticas\n\n` +
-                               `<b>EJEMPLOS:</b>\n` +
-                               `/change TY423 45.99\n` +
-                               `/shipping EE632 5.99`;
+            }
+            else if (data === "help") {
+                const helpMsg = `❓ <b>COMANDOS</b>\n\n` +
+                               `/start - Menú\n/list - Productos\n/stats - Stats\n` +
+                               `/change ID precio\n/shipping ID costo`;
                 await sendMessage(chatId, helpMsg);
-            } else if (data.startsWith("page_")) {
+            }
+            else if (data.startsWith("page_")) {
                 const page = parseInt(data.split("_")[1]);
                 await listProducts(chatId, page);
-            } else if (data.startsWith("select_")) {
+            }
+            else if (data.startsWith("select_")) {
                 const productId = data.replace("select_", "");
                 await showModifyOptions(chatId, productId);
-            } else if (data.startsWith("modify_price_")) {
+            }
+            else if (data.startsWith("modify_price_")) {
                 const productId = data.replace("modify_price_", "");
                 userSessions[chatId] = { action: 'waiting_price', productId: productId };
-                await sendMessage(chatId, "💰 Ingrese el nuevo precio (ej: 45.99):\n\nPara cancelar escriba /cancel");
-            } else if (data.startsWith("modify_shipping_")) {
+                await sendMessage(chatId, "💰 Ingrese nuevo precio (ej: 45.99):");
+            }
+            else if (data.startsWith("modify_shipping_")) {
                 const productId = data.replace("modify_shipping_", "");
                 userSessions[chatId] = { action: 'waiting_shipping', productId: productId };
-                await sendMessage(chatId, "🚚 Ingrese el nuevo costo de envío (ej: 5.99):\n\nPara cancelar escriba /cancel");
-            } else if (data.startsWith("modify_desc_")) {
-                const productId = data.replace("modify_desc_", "");
-                userSessions[chatId] = { action: 'waiting_description', productId: productId };
-                await sendMessage(chatId, "📝 Ingrese la nueva descripción:\n\nPara cancelar escriba /cancel");
+                await sendMessage(chatId, "🚚 Ingrese nuevo envío (ej: 5.99):");
             }
         }
 
         async function handleMessage(message) {
             const chatId = message.chat.id;
             const text = message.text;
-            const userName = message.from.first_name || message.from.username;
             
             if (!text) return;
             
-            addLog(`📨 Mensaje de ${userName}: ${text}`, 'bot');
+            addLog(`📨 Mensaje: ${text}`, 'bot');
             
-            if (text === '/start') {
-                await sendMainMenu(chatId);
-            } else if (text === '/list') {
-                await listProducts(chatId, 0);
-            } else if (text === '/stats') {
-                await showStats(chatId);
-            } else if (text === '/cancel') {
+            if (text === '/start') await sendMainMenu(chatId);
+            else if (text === '/list') await listProducts(chatId, 0);
+            else if (text === '/stats') await showStats(chatId);
+            else if (text === '/cancel') {
                 delete userSessions[chatId];
-                await sendMessage(chatId, "❌ Operación cancelada");
+                await sendMessage(chatId, "❌ Cancelado");
                 await sendMainMenu(chatId);
-            } else if (text.startsWith('/change')) {
-                const parts = text.split(' ');
-                if (parts.length !== 3) {
-                    await sendMessage(chatId, "❌ Uso: /change ID precio\nEjemplo: /change TY423 45.99");
-                    return;
-                }
-                await processPriceChange(chatId, parts[1], parts[2]);
-            } else if (text.startsWith('/shipping')) {
-                const parts = text.split(' ');
-                if (parts.length !== 3) {
-                    await sendMessage(chatId, "❌ Uso: /shipping ID costo\nEjemplo: /shipping TY423 5.99");
-                    return;
-                }
-                await processShippingChange(chatId, parts[1], parts[2]);
-            } else if (text.startsWith('/description')) {
-                const parts = text.split(' ');
-                if (parts.length < 3) {
-                    await sendMessage(chatId, "❌ Uso: /description ID texto\nEjemplo: /description TY423 Nueva descripción");
-                    return;
-                }
-                const description = parts.slice(2).join(' ');
-                await processDescriptionChange(chatId, parts[1], description);
             }
-            else if (userSessions[chatId] && userSessions[chatId].action) {
+            else if (text.startsWith('/change')) {
+                const parts = text.split(' ');
+                if (parts.length !== 3) await sendMessage(chatId, "❌ Uso: /change ID precio");
+                else await processPriceChange(chatId, parts[1], parts[2]);
+            }
+            else if (text.startsWith('/shipping')) {
+                const parts = text.split(' ');
+                if (parts.length !== 3) await sendMessage(chatId, "❌ Uso: /shipping ID costo");
+                else await processShippingChange(chatId, parts[1], parts[2]);
+            }
+            else if (userSessions[chatId]) {
                 const session = userSessions[chatId];
-                
                 if (session.action === 'waiting_price') {
                     await processPriceChange(chatId, session.productId, text);
                     delete userSessions[chatId];
                 } else if (session.action === 'waiting_shipping') {
                     await processShippingChange(chatId, session.productId, text);
-                    delete userSessions[chatId];
-                } else if (session.action === 'waiting_description') {
-                    await processDescriptionChange(chatId, session.productId, text);
                     delete userSessions[chatId];
                 }
             }
@@ -856,66 +876,49 @@
                     }
                 }
             } catch (error) {
-                addLog(`Error en polling: ${error.message}`, 'error');
+                addLog(`Error polling: ${error.message}`, 'error');
             }
         }
 
         function startBot() {
-            if (botActive) {
-                addLog("⚠️ El bot ya está activo", 'warning');
-                return;
-            }
-            
+            if (botActive) return;
             botActive = true;
             if (pollingInterval) clearInterval(pollingInterval);
             pollingInterval = setInterval(pollTelegram, 1000);
-            
-            updateBotStatus('active', 'Bot funcionando con token en binario');
-            addLog("🤖 BOT INICIADO - Esperando mensajes en Telegram", 'success');
-            addLog(`📱 Busca tu bot en Telegram para comenzar`, 'info');
+            updateBotStatus('active', 'Bot funcionando');
+            addLog("🤖 BOT INICIADO", 'success');
         }
 
         function stopBot() {
-            if (!botActive) {
-                addLog("⚠️ El bot ya está detenido", 'warning');
-                return;
-            }
-            
             botActive = false;
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
-            }
-            
+            if (pollingInterval) clearInterval(pollingInterval);
             updateBotStatus('stopped', 'Bot detenido');
-            addLog("⏹️ BOT DETENIDO - Ya no responde a comandos", 'warning');
+            addLog("⏹️ BOT DETENIDO", 'warning');
         }
 
         function sendCommand() {
             const input = document.getElementById('commandInput');
             const command = input.value.trim();
             if (command) {
-                addLog(`⌨️ Comando manual: ${command}`, 'info');
+                addLog(`⌨️ Comando: ${command}`, 'info');
                 input.value = '';
             }
         }
 
-        // ===== INICIALIZACIÓN =====
+        // Inicializar
         window.addEventListener('load', async () => {
             addLog("🌿 Sistema de Gestión de Productos Yuan", 'success');
-            addLog("🔐 Token cifrado en binario con separadores ඞ", 'info');
             
-            // Descifrar token desde binario
-            const tokenOk = setupToken();
+            // Intentar cargar token guardado
+            const hasToken = loadSavedToken();
             
-            if (tokenOk && GITHUB_TOKEN) {
-                await testToken();
-                await obtenerProductos();
-                addLog("✅ Sistema listo! Token válido y productos cargados", 'success');
-                addLog("▶️ Iniciando bot automáticamente...", 'info');
-                setTimeout(() => startBot(), 1000);
+            if (!hasToken) {
+                addLog("⚠️ Se requiere un token de GitHub para guardar cambios", 'warning');
+                addLog("📝 Ingresa tu token en la ventana que aparecerá", 'info');
             } else {
-                addLog("❌ No se pudo descifrar el token desde binario", 'error');
+                await obtenerProductos();
+                addLog("✅ Sistema listo! Token cargado", 'success');
+                setTimeout(() => startBot(), 1000);
             }
         });
     </script>
