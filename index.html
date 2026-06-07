@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YuanBot - Gestor de Productos</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -201,18 +200,6 @@
             background: #00ff41;
             border-radius: 4px;
         }
-
-        .decrypt-status {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            background: #0a0a0a;
-            padding: 5px 10px;
-            border-radius: 8px;
-            font-size: 10px;
-            color: #888;
-            border: 1px solid #2e7d32;
-        }
     </style>
 </head>
 <body>
@@ -251,19 +238,22 @@
             </div>
         </div>
     </div>
-    <div class="decrypt-status" id="decryptStatus">🔐 Inicializando...</div>
 
     <script>
-        // ===== TOKEN REAL CIFRADO CORRECTAMENTE =====
-        // Token original:
-        // Clave de descifrado: YuanBot2024SecureKey
+        // ===== TOKEN OFUSCADO EN BASE64 =====
+        // El token original: 
+        // Ofuscado en Base64 (se decodifica al iniciar)
+        const TOKEN_BASE64 = "Z2hwX2RZbFk1YkRWcWlaOWRGRlc4QXpnc3R4Um52ZDR6TTRGcnVNSQ==";
         
-        // Token cifrado con AES-256 (generado con CryptoJS)
-        const ENCRYPTED_TOKEN = "U2FsdGVkX1/9xKpLvNwR8HtYzQpLmNpOqRtSuVwXyZ0AaBbCcDdEeFfGgHhIiJjKkLlMm=";
-        
-        // Clave de descifrado (ofuscada)
-        const KEY_PARTS = ["Yuan", "Bot", "2024", "Secure", "Key"];
-        const DECRYPT_KEY = KEY_PARTS.join("");
+        // Decodificar Base64
+        function decodeToken() {
+            try {
+                return atob(TOKEN_BASE64);
+            } catch(e) {
+                console.error("Error decodificando token:", e);
+                return null;
+            }
+        }
         
         // ===== CONFIGURACIÓN =====
         const BOT_TOKEN = "8762418416:AAH02l_pssUwIM1uzyD2VmdK6NZ3tvPo398";
@@ -306,33 +296,20 @@
             }
         }
 
-        // Descifrar el token
-        function decryptToken() {
-            try {
-                addLog('🔓 Descifrando token de GitHub...', 'info');
-                const decrypted = CryptoJS.AES.decrypt(ENCRYPTED_TOKEN, DECRYPT_KEY).toString(CryptoJS.enc.Utf8);
-                
-                if (decrypted && decrypted.length > 20 && decrypted.startsWith('ghp_')) {
-                    GITHUB_TOKEN = decrypted;
-                    document.getElementById('decryptStatus').innerHTML = '✅ Token descifrado correctamente';
-                    document.getElementById('decryptStatus').style.color = '#00ff41';
-                    addLog('🔐 Token de GitHub descifrado correctamente', 'success');
-                    // Mostrar solo los primeros y últimos caracteres por seguridad
-                    const maskedToken = decrypted.substring(0, 8) + '...' + decrypted.substring(decrypted.length - 4);
-                    addLog(`📝 Token: ${maskedToken}`, 'info');
-                    return true;
-                } else {
-                    throw new Error('Token inválido después del descifrado');
-                }
-            } catch (error) {
-                document.getElementById('decryptStatus').innerHTML = '❌ Error al descifrar token';
-                document.getElementById('decryptStatus').style.color = '#ff4444';
-                addLog(`❌ Error al descifrar token: ${error.message}`, 'error');
+        // Decodificar y probar el token
+        function setupToken() {
+            GITHUB_TOKEN = decodeToken();
+            if (GITHUB_TOKEN && GITHUB_TOKEN.startsWith('ghp_')) {
+                const maskedToken = GITHUB_TOKEN.substring(0, 8) + '...' + GITHUB_TOKEN.substring(GITHUB_TOKEN.length - 4);
+                addLog(`🔑 Token decodificado: ${maskedToken}`, 'success');
+                return true;
+            } else {
+                addLog(`❌ Error al decodificar token`, 'error');
                 return false;
             }
         }
 
-        // Probar el token descifrado
+        // Probar el token
         async function testToken() {
             if (!GITHUB_TOKEN) return false;
             
@@ -497,7 +474,7 @@
             
             const message = `🤖 <b>GESTOR DE PRODUCTOS YUAN</b>\n\n` +
                            `📦 Productos en catálogo: ${total}\n` +
-                           `🔐 GitHub Token: Configurado y activo\n` +
+                           `🔐 GitHub Token: Configurado (Base64)\n` +
                            `⏰ Hora: ${new Date().toLocaleTimeString()}\n\n` +
                            `Seleccione una opción:`;
             
@@ -873,7 +850,7 @@
             if (pollingInterval) clearInterval(pollingInterval);
             pollingInterval = setInterval(pollTelegram, 1000);
             
-            updateBotStatus('active', 'Bot funcionando con token cifrado');
+            updateBotStatus('active', 'Bot funcionando con token en Base64');
             addLog("🤖 BOT INICIADO - Esperando mensajes en Telegram", 'success');
             addLog(`📱 Busca tu bot en Telegram para comenzar`, 'info');
         }
@@ -906,25 +883,19 @@
         // ===== INICIALIZACIÓN =====
         window.addEventListener('load', async () => {
             addLog("🌿 Sistema de Gestión de Productos Yuan", 'success');
-            addLog("🔐 Token de GitHub cifrado con AES-256", 'info');
+            addLog("🔐 Token de GitHub ofuscado en Base64", 'info');
             
-            // Descifrar el token
-            const decrypted = decryptToken();
+            // Decodificar token
+            const tokenOk = setupToken();
             
-            if (decrypted && GITHUB_TOKEN) {
+            if (tokenOk && GITHUB_TOKEN) {
                 await testToken();
                 await obtenerProductos();
                 addLog("✅ Sistema listo! Token válido y productos cargados", 'success');
                 addLog("▶️ Iniciando bot automáticamente...", 'info');
                 setTimeout(() => startBot(), 1000);
             } else {
-                addLog("❌ No se pudo descifrar el token. Usando token de respaldo...", 'warning');
-                // Token de respaldo por si falla el descifrado
-                GITHUB_TOKEN = "wdasdadasdasda";
-                await testToken();
-                await obtenerProductos();
-                addLog("✅ Sistema listo usando token directo", 'success');
-                setTimeout(() => startBot(), 1000);
+                addLog("❌ No se pudo decodificar el token. Verifica la configuración.", 'error');
             }
         });
     </script>
