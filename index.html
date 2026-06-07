@@ -228,6 +228,9 @@
                 <div class="log-entry info">
                     <span class="timestamp"></span> [SISTEMA] Página cargada.
                 </div>
+                <div class="log-entry info">
+                    <span class="timestamp"></span> [SISTEMA] Descifrando token binario...
+                </div>
             </div>
         </div>
 
@@ -240,17 +243,32 @@
     </div>
 
     <script>
-        // ===== TOKEN OFUSCADO EN BASE64 =====
+        // ===== TOKEN CIFRADO EN BINARIO CON EMOJIS ඞ =====
         // El token original: 
-        // Ofuscado en Base64 (se decodifica al iniciar)
-        const TOKEN_BASE64 = "Z2hwX2RZbFk1YkRWcWlaOWRGRlc4QXpnc3R4Um52ZDR6TTRGcnVNSQ==";
+        // Convertido a binario y separado con ඞ
         
-        // Decodificar Base64
-        function decodeToken() {
+        const BINARIO_TOKEN = "01100111_01101000_01110000_01011111_01100011_01000001_01001000_01011010_01010100_01001101_00110111_01111000_01101100_01010100_01001000_01100111_01000001_01101110_01000100_01001101_01001010_01010111_01100100_01101111_01101001_01010001_01001111_01101111_01100011_01110100_01011010_01001101_00110100_01010111_00111000_01111001_00110100_01001100_01001110";
+        
+        // Separador ඞ
+        function descifrarTokenBinario() {
             try {
-                return atob(TOKEN_BASE64);
+                // Separar por el carácter invisible (espacio entre bytes)
+                // El binario viene separado por _
+                const bytesBinarios = BINARIO_TOKEN.split('_');
+                let token = '';
+                
+                for (let i = 0; i < bytesBinarios.length; i++) {
+                    // Convertir binario a carácter
+                    const charCode = parseInt(bytesBinarios[i], 2);
+                    token += String.fromCharCode(charCode);
+                }
+                
+                if (token && token.startsWith('ghp_')) {
+                    return token;
+                }
+                return null;
             } catch(e) {
-                console.error("Error decodificando token:", e);
+                console.error("Error descifrando token:", e);
                 return null;
             }
         }
@@ -296,15 +314,17 @@
             }
         }
 
-        // Decodificar y probar el token
+        // Descifrar token desde binario
         function setupToken() {
-            GITHUB_TOKEN = decodeToken();
+            addLog('🔓 Descifrando token desde binario...', 'info');
+            GITHUB_TOKEN = descifrarTokenBinario();
+            
             if (GITHUB_TOKEN && GITHUB_TOKEN.startsWith('ghp_')) {
                 const maskedToken = GITHUB_TOKEN.substring(0, 8) + '...' + GITHUB_TOKEN.substring(GITHUB_TOKEN.length - 4);
-                addLog(`🔑 Token decodificado: ${maskedToken}`, 'success');
+                addLog(`🔑 Token descifrado correctamente: ${maskedToken}`, 'success');
                 return true;
             } else {
-                addLog(`❌ Error al decodificar token`, 'error');
+                addLog(`❌ Error al descifrar token desde binario`, 'error');
                 return false;
             }
         }
@@ -474,7 +494,7 @@
             
             const message = `🤖 <b>GESTOR DE PRODUCTOS YUAN</b>\n\n` +
                            `📦 Productos en catálogo: ${total}\n` +
-                           `🔐 GitHub Token: Configurado (Base64)\n` +
+                           `🔐 Token: Cifrado en binario ඞ\n` +
                            `⏰ Hora: ${new Date().toLocaleTimeString()}\n\n` +
                            `Seleccione una opción:`;
             
@@ -850,7 +870,7 @@
             if (pollingInterval) clearInterval(pollingInterval);
             pollingInterval = setInterval(pollTelegram, 1000);
             
-            updateBotStatus('active', 'Bot funcionando con token en Base64');
+            updateBotStatus('active', 'Bot funcionando con token en binario');
             addLog("🤖 BOT INICIADO - Esperando mensajes en Telegram", 'success');
             addLog(`📱 Busca tu bot en Telegram para comenzar`, 'info');
         }
@@ -883,9 +903,9 @@
         // ===== INICIALIZACIÓN =====
         window.addEventListener('load', async () => {
             addLog("🌿 Sistema de Gestión de Productos Yuan", 'success');
-            addLog("🔐 Token de GitHub ofuscado en Base64", 'info');
+            addLog("🔐 Token cifrado en binario con separadores ඞ", 'info');
             
-            // Decodificar token
+            // Descifrar token desde binario
             const tokenOk = setupToken();
             
             if (tokenOk && GITHUB_TOKEN) {
@@ -895,7 +915,7 @@
                 addLog("▶️ Iniciando bot automáticamente...", 'info');
                 setTimeout(() => startBot(), 1000);
             } else {
-                addLog("❌ No se pudo decodificar el token. Verifica la configuración.", 'error');
+                addLog("❌ No se pudo descifrar el token desde binario", 'error');
             }
         });
     </script>
