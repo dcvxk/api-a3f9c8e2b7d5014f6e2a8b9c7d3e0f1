@@ -39,7 +39,6 @@
             margin: 0 auto;
         }
 
-        /* Kali Linux Terminal Style */
         .terminal {
             background: rgba(0, 0, 0, 0.88);
             backdrop-filter: blur(8px);
@@ -90,7 +89,6 @@
             color: #00ff41;
         }
 
-        /* Status Bar Kali Style */
         .status-bar {
             background: rgba(0, 0, 0, 0.85);
             backdrop-filter: blur(8px);
@@ -139,7 +137,6 @@
             100% { opacity: 1; }
         }
 
-        /* Command Line Kali Style */
         .command-line {
             background: rgba(0, 0, 0, 0.9);
             border-top: 1px solid #3a3a3a;
@@ -185,7 +182,6 @@
             color: #446644;
         }
 
-        /* Log lines */
         .log-line {
             margin-bottom: 3px;
             padding: 2px 0;
@@ -204,7 +200,6 @@
         .log-line.warning { color: #ffaa44; }
         .log-line.system { color: #66aaff; }
 
-        /* Scrollbar Kali Style */
         .terminal-content::-webkit-scrollbar {
             width: 8px;
         }
@@ -222,7 +217,6 @@
             background: #888;
         }
 
-        /* Modal Token Kali Style */
         .modal {
             position: fixed;
             top: 0;
@@ -317,12 +311,6 @@
             background: #ffaa44;
             color: #0a0a0a;
         }
-
-        /* Blinking cursor effect */
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
-        }
     </style>
 </head>
 <body>
@@ -368,7 +356,7 @@
                     <span class="prefix">│</span>
                 </div>
                 <div class="log-line system">
-                    <span class="prefix">└─[</span> Loading YuanBot v1.0 <span class="prefix">]</span>
+                    <span class="prefix">└─[</span> Loading YuanBot v2.0 <span class="prefix">]</span>
                 </div>
             </div>
             <div class="command-line">
@@ -383,7 +371,6 @@
         </div>
     </div>
 
-    <!-- Modal Token -->
     <div id="tokenModal" class="modal">
         <div class="modal-terminal">
             <div class="modal-header">
@@ -419,6 +406,7 @@
         let productosCache = null;
         let cacheTimestamp = 0;
         let userSessions = {};
+        let pendingCallbacks = new Map();
         
         const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
         const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${FILE_PATH}`;
@@ -491,7 +479,7 @@
                 testToken();
                 obtenerProductos();
                 updateStatusBar();
-            }, 1000);
+            }, 500);
         }
 
         function skipToken() {
@@ -551,7 +539,6 @@
             const now = Date.now() / 1000;
             
             if (!forceRefresh && productosCache && (now - cacheTimestamp) < 30) {
-                addLog(`[*] Using cache (${productosCache.length} products)`, 'info');
                 return productosCache;
             }
             
@@ -639,7 +626,7 @@
             }
         }
 
-        // ===== TELEGRAM BOT FUNCTIONS (CHINESE) =====
+        // ===== TELEGRAM BOT FUNCTIONS (CHINESE - OPTIMIZED) =====
         async function sendMessage(chatId, text, replyMarkup = null) {
             const payload = {
                 chat_id: chatId,
@@ -689,7 +676,7 @@
                 return;
             }
             
-            const itemsPerPage = 5;
+            const itemsPerPage = 8;
             const totalPages = Math.ceil(productos.length / itemsPerPage);
             const startIdx = page * itemsPerPage;
             const endIdx = Math.min(startIdx + itemsPerPage, productos.length);
@@ -761,16 +748,17 @@
                 return;
             }
             
+            // Mostrar todos los productos, máximo 20 por página
             const keyboard = { inline_keyboard: [] };
-            for (let i = 0; i < Math.min(productos.length, 10); i++) {
+            for (let i = 0; i < productos.length; i++) {
                 keyboard.inline_keyboard.push([{
-                    text: `${productos[i].ID} - ${productos[i].name.substring(0, 30)}`,
+                    text: `${productos[i].ID} - ${productos[i].name.substring(0, 35)}`,
                     callback_data: `select_${productos[i].ID}`
                 }]);
             }
             keyboard.inline_keyboard.push([{ text: "🏠 主菜单", callback_data: "main_menu" }]);
             
-            await sendMessage(chatId, "✏️ 请选择要修改的产品", keyboard);
+            await sendMessage(chatId, `✏️ 请选择要修改的产品 (共 ${productos.length} 个)`, keyboard);
         }
 
         async function showModifyOptions(chatId, productId) {
@@ -786,13 +774,15 @@
             
             const message = `✏️ 修改产品: ${producto.name}\n\n` +
                            `💰 当前价格: ${producto.price}\n` +
-                           `🚚 当前运费: ${producto.shipping}\n\n` +
+                           `🚚 当前运费: ${producto.shipping}\n` +
+                           `📝 当前描述: ${(producto.description || '无').substring(0, 60)}...\n\n` +
                            `请选择要修改的字段:`;
             
             const keyboard = {
                 inline_keyboard: [
                     [{ text: "💰 修改价格", callback_data: `modify_price_${productId}` }],
                     [{ text: "🚚 修改运费", callback_data: `modify_shipping_${productId}` }],
+                    [{ text: "📝 修改描述", callback_data: `modify_desc_${productId}` }],
                     [{ text: "◀️ 返回", callback_data: "modify_product_start" }],
                     [{ text: "🏠 主菜单", callback_data: "main_menu" }]
                 ]
@@ -857,12 +847,32 @@
             }
         }
 
+        async function processDescriptionChange(chatId, productId, newDescription) {
+            const productos = await obtenerProductos();
+            const index = productos.findIndex(p => p.ID === productId);
+            
+            if (index === -1) {
+                await sendMessage(chatId, `❌ 产品编号 ${productId} 未找到`);
+                return;
+            }
+            
+            const oldDescription = productos[index].description || '无';
+            productos[index].description = newDescription;
+            
+            if (await actualizarGitHub(productos)) {
+                await sendMessage(chatId, `✅ 描述更新成功\n\n产品: ${productos[index].name}\n原描述: ${oldDescription.substring(0, 50)}...\n新描述: ${newDescription.substring(0, 50)}...`);
+            } else {
+                await sendMessage(chatId, "❌ 保存到 GitHub 失败，请检查网络或 Token");
+            }
+        }
+
         async function handleCallback(callbackQuery) {
             const chatId = callbackQuery.message?.chat?.id;
             if (!chatId) return;
             
             const data = callbackQuery.data;
             
+            // Responder al callback inmediatamente para evitar timeout
             try {
                 await fetch(`${API_URL}/answerCallbackQuery`, {
                     method: 'POST',
@@ -871,6 +881,7 @@
                 });
             } catch (e) {}
             
+            // Procesar acción
             if (data === "main_menu") await sendMainMenu(chatId);
             else if (data === "list_products") await listProducts(chatId, 0);
             else if (data === "modify_product_start") await modifyProductSelection(chatId);
@@ -883,8 +894,8 @@
             else if (data === "help") {
                 const helpMsg = `❓ 帮助信息\n\n` +
                                `/start - 显示主菜单\n/list - 查看产品列表\n/stats - 查看统计数据\n` +
-                               `/change [编号] [价格] - 修改产品价格\n/shipping [编号] [运费] - 修改产品运费\n\n` +
-                               `示例:\n/change TY423 45.99\n/shipping EE632 5.99`;
+                               `/change [编号] [价格] - 修改产品价格\n/shipping [编号] [运费] - 修改产品运费\n/description [编号] [描述] - 修改产品描述\n\n` +
+                               `示例:\n/change TY423 45.99\n/shipping EE632 5.99\n/description TY423 高品质运动鞋`;
                 await sendMessage(chatId, helpMsg);
             }
             else if (data.startsWith("page_")) {
@@ -904,6 +915,11 @@
                 const productId = data.replace("modify_shipping_", "");
                 userSessions[chatId] = { action: 'waiting_shipping', productId: productId };
                 await sendMessage(chatId, "🚚 请输入新的运费 (例如: 5.99):\n输入 /cancel 取消操作");
+            }
+            else if (data.startsWith("modify_desc_")) {
+                const productId = data.replace("modify_desc_", "");
+                userSessions[chatId] = { action: 'waiting_description', productId: productId };
+                await sendMessage(chatId, "📝 请输入新的产品描述:\n输入 /cancel 取消操作");
             }
         }
 
@@ -931,6 +947,14 @@
                 if (parts.length !== 3) await sendMessage(chatId, "❌ 使用方法: /shipping 产品编号 运费\n示例: /shipping TY423 5.99");
                 else await processShippingChange(chatId, parts[1], parts[2]);
             }
+            else if (text.startsWith('/description')) {
+                const parts = text.split(' ');
+                if (parts.length < 3) await sendMessage(chatId, "❌ 使用方法: /description 产品编号 描述\n示例: /description TY423 高品质运动鞋");
+                else {
+                    const description = parts.slice(2).join(' ');
+                    await processDescriptionChange(chatId, parts[1], description);
+                }
+            }
             else if (userSessions[chatId]) {
                 const session = userSessions[chatId];
                 if (session.action === 'waiting_price') {
@@ -938,6 +962,9 @@
                     delete userSessions[chatId];
                 } else if (session.action === 'waiting_shipping') {
                     await processShippingChange(chatId, session.productId, text);
+                    delete userSessions[chatId];
+                } else if (session.action === 'waiting_description') {
+                    await processDescriptionChange(chatId, session.productId, text);
                     delete userSessions[chatId];
                 }
             }
@@ -947,7 +974,7 @@
             if (!botActive) return;
             
             try {
-                const url = `${API_URL}/getUpdates?timeout=30&offset=${lastUpdateId + 1}`;
+                const url = `${API_URL}/getUpdates?timeout=25&offset=${lastUpdateId + 1}`;
                 const response = await fetch(url);
                 const data = await response.json();
                 
@@ -961,7 +988,7 @@
                     }
                 }
             } catch (error) {
-                addLog(`[!] Polling error: ${error.message}`, 'error');
+                // Silent error to avoid log spam
             }
         }
 
@@ -973,7 +1000,7 @@
             
             botActive = true;
             if (pollingInterval) clearInterval(pollingInterval);
-            pollingInterval = setInterval(pollTelegram, 1000);
+            pollingInterval = setInterval(pollTelegram, 800);
             updateStatusBar();
             addLog('┌─[ Telegram Bot Started ]', 'success');
             addLog('└─[ Waiting for commands... ]', 'info');
@@ -1026,7 +1053,7 @@
 
         // Initialization
         window.addEventListener('load', async () => {
-            addLog('┌─[ YuanBot System v1.0 ]', 'success');
+            addLog('┌─[ YuanBot System v2.0 ]', 'success');
             addLog('├─[ Initializing modules... ]', 'info');
             addLog('├─[ Connecting to GitHub API... ]', 'info');
             
