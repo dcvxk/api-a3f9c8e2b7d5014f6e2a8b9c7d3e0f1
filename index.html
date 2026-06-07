@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YuanBot - Gestor de Productos GitHub</title>
+    <title>YuanBot - Gestor de Productos</title>
     <style>
         * {
             margin: 0;
@@ -23,13 +23,92 @@
             margin: 0 auto;
         }
 
+        /* Modal de token */
+        .modal {
+            display: flex;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #0a0a0a;
+            border: 2px solid #00ff41;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-content h2 {
+            color: #00ff41;
+            margin-bottom: 20px;
+        }
+
+        .modal-content p {
+            color: #ccc;
+            margin-bottom: 20px;
+        }
+
+        .token-input {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #00ff41;
+            color: #00ff41;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 14px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .token-input:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(0,255,65,0.3);
+        }
+
+        .btn-primary {
+            background: #00ff41;
+            color: #0a0a0a;
+            border: none;
+            padding: 12px 24px;
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            margin: 5px;
+        }
+
+        .btn-primary:hover {
+            background: #00cc33;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            font-family: monospace;
+            cursor: pointer;
+            border-radius: 8px;
+            margin: 5px;
+        }
+
         .bot-status {
             background: #0a0a0a;
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
             border: 2px solid #00ff41;
-            box-shadow: 0 0 20px rgba(0,255,65,0.2);
         }
 
         .status-indicator {
@@ -200,6 +279,19 @@
             background: #00ff41;
             border-radius: 4px;
         }
+
+        .token-status {
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .token-valid {
+            color: #00ff41;
+        }
+
+        .token-invalid {
+            color: #ff4444;
+        }
     </style>
 </head>
 <body>
@@ -208,9 +300,9 @@
             <div class="status-indicator">
                 <div class="status-led" id="statusLed"></div>
                 <div class="bot-info">
-                    <div class="bot-name">🤖 YuanBot - Gestor de Productos GitHub</div>
+                    <div class="bot-name">🤖 YuanBot - Gestor de Productos</div>
                     <div class="bot-stats" id="botStats">
-                        Estado: Inicializando...
+                        Estado: Esperando token...
                     </div>
                 </div>
                 <div class="control-buttons">
@@ -239,29 +331,40 @@
         </div>
     </div>
 
+    <!-- Modal para ingresar el token -->
+    <div id="tokenModal" class="modal">
+        <div class="modal-content">
+            <h2>🔑 CONFIGURACIÓN REQUERIDA</h2>
+            <p>Ingresa tu GitHub Personal Access Token para que el bot pueda guardar los cambios.</p>
+            <p style="font-size: 12px; color: #ffaa44;">El token se guardará SOLO en tu navegador local, no en el repositorio.</p>
+            <input type="password" id="tokenInput" class="token-input" placeholder="Pega tu token de GitHub aquí">
+            <div>
+                <button class="btn-primary" onclick="saveToken()">✅ GUARDAR TOKEN</button>
+                <button class="btn-secondary" onclick="skipToken()">⚠️ USAR SIN GUARDAR (solo lectura)</button>
+            </div>
+            <div id="tokenMessage" class="token-status"></div>
+        </div>
+    </div>
+
     <script>
         // ===== CONFIGURACIÓN =====
         const BOT_TOKEN = "8762418416:AAH02l_pssUwIM1uzyD2VmdK6NZ3tvPo398";
-        
-        // Configuración de GitHub
-        const GITHUB_TOKEN = "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";
         const REPO_OWNER = "dcvxk";
         const REPO_NAME = "Yuan24-7.github.io";
         const FILE_PATH = "productos.json";
         
-        // URLs
-        const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
-        const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${FILE_PATH}`;
-        const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
-        
-        // Estado
+        // Variables
+        let GITHUB_TOKEN = null;
         let botActive = false;
         let pollingInterval = null;
         let lastUpdateId = 0;
         let productosCache = null;
         let cacheTimestamp = 0;
         let userSessions = {};
-        let githubSha = null;
+        
+        const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
+        const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${FILE_PATH}`;
+        const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
 
         function addLog(message, type = 'info') {
             const logsDiv = document.getElementById('logsContent');
@@ -286,10 +389,60 @@
             }
         }
 
-        // ===== FUNCIONES DE GITHUB =====
-        async function getGitHubSha() {
+        // Cifrado simple (solo para ocultar visualmente, no es seguridad real)
+        function simpleEncode(str) {
+            return btoa(str);
+        }
+
+        function simpleDecode(str) {
             try {
-                const response = await fetch(GITHUB_API_URL, {
+                return atob(str);
+            } catch(e) {
+                return null;
+            }
+        }
+
+        // Guardar token en localStorage (solo en el navegador del usuario)
+        function saveToken() {
+            const tokenInput = document.getElementById('tokenInput');
+            const token = tokenInput.value.trim();
+            
+            if (!token) {
+                document.getElementById('tokenMessage').innerHTML = '❌ Por favor ingresa un token';
+                document.getElementById('tokenMessage').className = 'token-status token-invalid';
+                return;
+            }
+            
+            // Guardar token cifrado localmente
+            const encodedToken = simpleEncode(token);
+            localStorage.setItem('github_token_enc', encodedToken);
+            GITHUB_TOKEN = token;
+            
+            document.getElementById('tokenMessage').innerHTML = '✅ Token guardado correctamente (solo en tu navegador)';
+            document.getElementById('tokenMessage').className = 'token-status token-valid';
+            
+            // Probar el token
+            testToken();
+            
+            setTimeout(() => {
+                document.getElementById('tokenModal').style.display = 'none';
+                addLog('🔑 Token de GitHub configurado correctamente', 'success');
+                addLog('📝 Los cambios se guardarán en tu repositorio de GitHub', 'info');
+            }, 1500);
+        }
+
+        function skipToken() {
+            document.getElementById('tokenModal').style.display = 'none';
+            GITHUB_TOKEN = null;
+            addLog('⚠️ Modo solo lectura: Los cambios NO se guardarán en GitHub', 'warning');
+            addLog('💡 Para guardar cambios, recarga la página e ingresa un token válido', 'info');
+        }
+
+        async function testToken() {
+            if (!GITHUB_TOKEN) return false;
+            
+            try {
+                const response = await fetch('https://api.github.com/user', {
                     headers: {
                         'Authorization': `token ${GITHUB_TOKEN}`,
                         'Accept': 'application/vnd.github.v3+json'
@@ -297,16 +450,47 @@
                 });
                 
                 if (response.ok) {
-                    const data = await response.json();
-                    return data.sha;
+                    const user = await response.json();
+                    addLog(`✅ Token válido - Usuario: ${user.login}`, 'success');
+                    
+                    // Probar acceso al repo
+                    const repoTest = await fetch(GITHUB_API_URL, {
+                        headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
+                    });
+                    if (repoTest.ok) {
+                        addLog(`✅ Acceso confirmado al repositorio`, 'success');
+                        return true;
+                    } else {
+                        addLog(`⚠️ El token no tiene acceso al repositorio`, 'warning');
+                        return false;
+                    }
+                } else {
+                    addLog(`❌ Token inválido. Verifica que tenga permisos 'repo'`, 'error');
+                    return false;
                 }
-                return null;
             } catch (error) {
-                addLog(`Error obteniendo SHA: ${error.message}`, 'error');
-                return null;
+                addLog(`❌ Error probando token: ${error.message}`, 'error');
+                return false;
             }
         }
 
+        // Cargar token guardado al inicio
+        function loadSavedToken() {
+            const encoded = localStorage.getItem('github_token_enc');
+            if (encoded) {
+                const decoded = simpleDecode(encoded);
+                if (decoded && decoded.startsWith('ghp_')) {
+                    GITHUB_TOKEN = decoded;
+                    document.getElementById('tokenModal').style.display = 'none';
+                    addLog('🔑 Token cargado desde almacenamiento local', 'success');
+                    testToken();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // ===== FUNCIONES DE GITHUB =====
         async function obtenerProductos(forceRefresh = false) {
             const now = Date.now() / 1000;
             
@@ -317,10 +501,7 @@
             
             try {
                 addLog(`🌐 Descargando productos desde GitHub...`, 'info');
-                
-                // Usar proxy CORS gratuito
-                const proxyUrl = 'https://api.allorigins.win/raw?url=';
-                const response = await fetch(proxyUrl + encodeURIComponent(RAW_URL));
+                const response = await fetch(RAW_URL);
                 
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
@@ -333,43 +514,37 @@
                     return productosCache;
                 }
                 
-                // Si no hay productos, crear array vacío
                 productosCache = [];
-                cacheTimestamp = now;
                 return [];
                 
             } catch (error) {
                 addLog(`❌ Error al cargar: ${error.message}`, 'error');
-                
-                // Intentar sin proxy
-                try {
-                    addLog(`🔄 Intentando sin proxy...`, 'warning');
-                    const response = await fetch(RAW_URL);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.products) {
-                            productosCache = data.products;
-                            cacheTimestamp = now;
-                            addLog(`✅ ${productosCache.length} productos cargados`, 'success');
-                            return productosCache;
-                        }
-                    }
-                } catch (e) {
-                    addLog(`❌ Error sin proxy también: ${e.message}`, 'error');
-                }
-                
                 return productosCache || [];
             }
         }
 
         async function actualizarGitHub(productos) {
+            if (!GITHUB_TOKEN) {
+                addLog(`⚠️ No se puede guardar: No hay token de GitHub configurado`, 'warning');
+                return false;
+            }
+            
             try {
                 addLog(`📤 Guardando en GitHub...`, 'info');
                 
-                // Obtener el SHA actual
-                const sha = await getGitHubSha();
+                const getResponse = await fetch(GITHUB_API_URL, {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
                 
-                // Preparar contenido
+                let sha = null;
+                if (getResponse.ok) {
+                    const data = await getResponse.json();
+                    sha = data.sha;
+                }
+                
                 const dataToUpload = { products: productos };
                 const contenidoJson = JSON.stringify(dataToUpload, null, 2);
                 const contenidoBase64 = btoa(unescape(encodeURIComponent(contenidoJson)));
@@ -382,8 +557,7 @@
                 
                 if (sha) putData.sha = sha;
                 
-                // Intentar guardar
-                const response = await fetch(GITHUB_API_URL, {
+                const putResponse = await fetch(GITHUB_API_URL, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `token ${GITHUB_TOKEN}`,
@@ -393,37 +567,13 @@
                     body: JSON.stringify(putData)
                 });
                 
-                if (response.ok) {
+                if (putResponse.ok) {
                     cacheTimestamp = 0;
                     addLog(`✅ Cambios guardados en GitHub`, 'success');
                     return true;
                 } else {
-                    const error = await response.json();
-                    addLog(`❌ Error GitHub: ${error.message || response.status}`, 'error');
-                    
-                    // Si es error de SHA, intentar actualizar
-                    if (error.message && error.message.includes('sha')) {
-                        addLog(`🔄 Actualizando SHA...`, 'warning');
-                        const newSha = await getGitHubSha();
-                        if (newSha) {
-                            putData.sha = newSha;
-                            const retryResponse = await fetch(GITHUB_API_URL, {
-                                method: 'PUT',
-                                headers: {
-                                    'Authorization': `token ${GITHUB_TOKEN}`,
-                                    'Accept': 'application/vnd.github.v3+json',
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(putData)
-                            });
-                            
-                            if (retryResponse.ok) {
-                                cacheTimestamp = 0;
-                                addLog(`✅ Cambios guardados en GitHub (reintento)`, 'success');
-                                return true;
-                            }
-                        }
-                    }
+                    const error = await putResponse.json();
+                    addLog(`❌ Error GitHub: ${error.message}`, 'error');
                     return false;
                 }
             } catch (error) {
@@ -458,17 +608,17 @@
                     [{ text: "📋 VER PRODUCTOS", callback_data: "list_products" }],
                     [{ text: "✏️ MODIFICAR PRODUCTO", callback_data: "modify_product_start" }],
                     [{ text: "📊 ESTADISTICAS", callback_data: "stats" }],
-                    [{ text: "🔄 REFRESCAR", callback_data: "refresh" }],
-                    [{ text: "❓ AYUDA", callback_data: "help" }]
+                    [{ text: "🔄 REFRESCAR", callback_data: "refresh" }]
                 ]
             };
             
             const productos = await obtenerProductos();
             const total = productos ? productos.length : 0;
+            const tokenStatus = GITHUB_TOKEN ? "✅ Configurado" : "⚠️ Solo lectura";
             
             const message = `🤖 <b>GESTOR DE PRODUCTOS YUAN</b>\n\n` +
                            `📦 Productos: ${total}\n` +
-                           `💾 Datos en GitHub\n` +
+                           `🔑 GitHub: ${tokenStatus}\n` +
                            `⏰ ${new Date().toLocaleTimeString()}\n\n` +
                            `Seleccione una opción:`;
             
@@ -499,8 +649,7 @@
                 message += `🆔 ID: ${p.ID || 'N/A'}\n`;
                 message += `💰 Precio: ${p.price || 'N/A'}\n`;
                 message += `🏷️ Marca: ${p.brand || 'N/A'}\n`;
-                message += `🚚 Envío: ${p.shipping || 'N/A'}\n`;
-                message += `📝 Desc: ${(p.description || 'N/A').substring(0, 50)}...\n\n`;
+                message += `🚚 Envío: ${p.shipping || 'N/A'}\n\n`;
             }
             
             const keyboard = { inline_keyboard: [] };
@@ -522,22 +671,18 @@
             
             const marcas = {};
             const precios = [];
-            const envios = [];
             
             for (const p of productos) {
                 const marca = p.brand || 'Sin marca';
                 marcas[marca] = (marcas[marca] || 0) + 1;
                 const precio = parseFloat((p.price || '$0').replace('$', ''));
                 if (!isNaN(precio)) precios.push(precio);
-                const envio = parseFloat((p.shipping || '$0').replace('$', ''));
-                if (!isNaN(envio)) envios.push(envio);
             }
             
             const marcaTop = Object.keys(marcas).reduce((a, b) => marcas[a] > marcas[b] ? a : b, 'N/A');
             const precioMin = precios.length ? Math.min(...precios) : 0;
             const precioMax = precios.length ? Math.max(...precios) : 0;
             const precioProm = precios.length ? precios.reduce((a,b) => a+b, 0) / precios.length : 0;
-            const envioProm = envios.length ? envios.reduce((a,b) => a+b, 0) / envios.length : 0;
             
             const message = `📊 <b>ESTADISTICAS</b>\n\n` +
                            `📦 Total: ${productos.length}\n` +
@@ -546,8 +691,7 @@
                            `💰 Precios\n` +
                            `   Mín: $${precioMin.toFixed(2)}\n` +
                            `   Máx: $${precioMax.toFixed(2)}\n` +
-                           `   Prom: $${precioProm.toFixed(2)}\n\n` +
-                           `🚚 Envío promedio: $${envioProm.toFixed(2)}`;
+                           `   Prom: $${precioProm.toFixed(2)}`;
             
             const keyboard = { inline_keyboard: [[{ text: "🏠 MENU PRINCIPAL", callback_data: "main_menu" }]] };
             await sendMessage(chatId, message, keyboard);
@@ -585,15 +729,13 @@
             
             const message = `✏️ <b>MODIFICAR: ${producto.name}</b>\n\n` +
                            `💰 Precio: ${producto.price}\n` +
-                           `🚚 Envío: ${producto.shipping}\n` +
-                           `📝 Desc: ${(producto.description || 'N/A').substring(0, 50)}...\n\n` +
+                           `🚚 Envío: ${producto.shipping}\n\n` +
                            `¿Qué modificar?`;
             
             const keyboard = {
                 inline_keyboard: [
                     [{ text: "💰 PRECIO", callback_data: `modify_price_${productId}` }],
                     [{ text: "🚚 ENVIO", callback_data: `modify_shipping_${productId}` }],
-                    [{ text: "📝 DESCRIPCION", callback_data: `modify_desc_${productId}` }],
                     [{ text: "◀️ VOLVER", callback_data: "modify_product_start" }],
                     [{ text: "🏠 MENU", callback_data: "main_menu" }]
                 ]
@@ -624,12 +766,9 @@
             productos[index].price = formattedPrice;
             
             if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `Antes: ${oldPrice}\n` +
-                                        `Ahora: ${formattedPrice}`);
+                await sendMessage(chatId, `✅ PRECIO ACTUALIZADO\n\nProducto: ${productos[index].name}\nAntes: ${oldPrice}\nAhora: ${formattedPrice}`);
             } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub");
+                await sendMessage(chatId, "❌ Error al guardar. ¿Configuraste el token de GitHub?");
             }
         }
 
@@ -655,34 +794,9 @@
             productos[index].shipping = formattedShipping;
             
             if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `Antes: ${oldShipping}\n` +
-                                        `Ahora: ${formattedShipping}`);
+                await sendMessage(chatId, `✅ ENVIO ACTUALIZADO\n\nProducto: ${productos[index].name}\nAntes: ${oldShipping}\nAhora: ${formattedShipping}`);
             } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub");
-            }
-        }
-
-        async function processDescriptionChange(chatId, productId, newDescription) {
-            const productos = await obtenerProductos();
-            const index = productos.findIndex(p => p.ID === productId);
-            
-            if (index === -1) {
-                await sendMessage(chatId, "❌ Producto no encontrado");
-                return;
-            }
-            
-            const oldDescription = productos[index].description;
-            productos[index].description = newDescription;
-            
-            if (await actualizarGitHub(productos)) {
-                await sendMessage(chatId, `✅ DESCRIPCION ACTUALIZADA\n\n` +
-                                        `Producto: ${productos[index].name}\n` +
-                                        `Antes: ${(oldDescription || 'N/A').substring(0, 50)}...\n` +
-                                        `Ahora: ${newDescription.substring(0, 50)}...`);
-            } else {
-                await sendMessage(chatId, "❌ Error al guardar en GitHub");
+                await sendMessage(chatId, "❌ Error al guardar. ¿Configuraste el token de GitHub?");
             }
         }
 
@@ -711,12 +825,6 @@
                 await sendMessage(chatId, "✅ Datos actualizados");
                 await sendMainMenu(chatId);
             }
-            else if (data === "help") {
-                const helpMsg = `❓ <b>COMANDOS</b>\n\n` +
-                               `/start - Menú\n/list - Productos\n/stats - Stats\n` +
-                               `/change ID precio\n/shipping ID costo\n/description ID texto`;
-                await sendMessage(chatId, helpMsg);
-            }
             else if (data.startsWith("page_")) {
                 const page = parseInt(data.split("_")[1]);
                 await listProducts(chatId, page);
@@ -728,17 +836,12 @@
             else if (data.startsWith("modify_price_")) {
                 const productId = data.replace("modify_price_", "");
                 userSessions[chatId] = { action: 'waiting_price', productId: productId };
-                await sendMessage(chatId, "💰 Ingrese nuevo precio (ej: 45.99):\n/enviar /cancel para cancelar");
+                await sendMessage(chatId, "💰 Ingrese nuevo precio (ej: 45.99):");
             }
             else if (data.startsWith("modify_shipping_")) {
                 const productId = data.replace("modify_shipping_", "");
                 userSessions[chatId] = { action: 'waiting_shipping', productId: productId };
                 await sendMessage(chatId, "🚚 Ingrese nuevo envío (ej: 5.99):");
-            }
-            else if (data.startsWith("modify_desc_")) {
-                const productId = data.replace("modify_desc_", "");
-                userSessions[chatId] = { action: 'waiting_description', productId: productId };
-                await sendMessage(chatId, "📝 Ingrese nueva descripción:");
             }
         }
 
@@ -768,11 +871,6 @@
                 if (parts.length !== 3) await sendMessage(chatId, "❌ Uso: /shipping ID costo");
                 else await processShippingChange(chatId, parts[1], parts[2]);
             }
-            else if (text.startsWith('/description')) {
-                const parts = text.split(' ');
-                if (parts.length < 3) await sendMessage(chatId, "❌ Uso: /description ID texto");
-                else await processDescriptionChange(chatId, parts[1], parts.slice(2).join(' '));
-            }
             else if (userSessions[chatId]) {
                 const session = userSessions[chatId];
                 if (session.action === 'waiting_price') {
@@ -781,14 +879,10 @@
                 } else if (session.action === 'waiting_shipping') {
                     await processShippingChange(chatId, session.productId, text);
                     delete userSessions[chatId];
-                } else if (session.action === 'waiting_description') {
-                    await processDescriptionChange(chatId, session.productId, text);
-                    delete userSessions[chatId];
                 }
             }
         }
 
-        // ===== POLLING =====
         async function pollTelegram() {
             if (!botActive) return;
             
@@ -839,12 +933,24 @@
         // Inicializar
         window.addEventListener('load', async () => {
             addLog("🌿 Sistema de Gestión de Productos Yuan", 'success');
-            addLog("🔗 Conectando a GitHub...", 'info');
+            addLog("🔐 El token de GitHub se guarda SOLO en tu navegador", 'info');
             
-            await obtenerProductos();
+            // Intentar cargar token guardado
+            const hasToken = loadSavedToken();
+            
+            if (!hasToken) {
+                addLog("⚠️ Se requiere un token de GitHub para guardar cambios", 'warning');
+                addLog("📝 Si no tienes token, puedes usar el bot en modo solo lectura", 'warning');
+            } else {
+                await obtenerProductos();
+            }
             
             addLog("✅ Listo! Presiona INICIAR BOT", 'success');
-            setTimeout(() => startBot(), 1000);
+            
+            // Auto-iniciar después de 2 segundos si hay token
+            setTimeout(() => {
+                if (hasToken) startBot();
+            }, 2000);
         });
     </script>
 </body>
